@@ -6,7 +6,20 @@ module CanCan
       end
 
       def database_records
-        @model_class.where(@rules.first.conditions)
+        if @rules.empty?
+          @model_class.where(id: 0) # empty collection proxy
+        else
+
+          @rules.each do |rule|
+            if rule.base_behaviour
+              # need to join all can rules with where and or.
+              @model_class.where(rule.conditions)
+            else
+              # need to join all can_not rules with where_not
+              @model_class.where_not(rule.conditions)
+            end
+          end
+          
       end
     end
   end
