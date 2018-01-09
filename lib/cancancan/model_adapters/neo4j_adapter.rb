@@ -12,7 +12,7 @@ module CanCan
   end
 end
 
-# simplest way to add `accessible_by` to all Mongoid Documents
+# simplest way to add `accessible_by` to all ActiveNode models
 module Neo4j::ActiveNode::ClassMethods
   include CanCan::ModelAdditions::ClassMethods
 end
