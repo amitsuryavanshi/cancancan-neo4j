@@ -38,16 +38,24 @@ module CanCan
         base_class_name = @model_class.name.downcase
         conditions = ''
         rules.each do |rule|
-          next if rule.conditions.blank?
-          if rule.base_behavior   
-            condition = conditions.blank? ? '(' : ' OR ('
+          condition = ''
+          if rule.conditions.blank?
+            if rule.base_behavior
+              condition = conditions.blank? ? "(true)" : " OR (true)"
+            else
+              condition = conditions.blank? ? "(false)" : " AND (false)"
+            end
           else
-            condition = conditions.blank? ? ' NOT (' : ' AND NOT ('
+            if rule.base_behavior   
+              condition = conditions.blank? ? '(' : ' OR ('
+            else
+              condition = conditions.blank? ? ' NOT (' : ' AND NOT ('
+            end
+            rule.conditions.each do |key, value|
+              condition += (base_class_name + '.' + key.to_s + "='" + value.to_s + "'")
+            end
+            condition += ')'
           end
-          rule.conditions.each do |key, value|
-            condition += (base_class_name + '.' + key.to_s + '=' + value.to_s)
-          end
-          condition += ')'
           conditions += condition
         end
         records = records | @model_class.as(base_class_name.to_sym).where(conditions)
