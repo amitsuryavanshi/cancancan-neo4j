@@ -9,7 +9,8 @@ module CanCan
         if @rules.empty?
           @model_class.where('false') # empty collection proxy
         elsif @rules.size == 1
-          rule.base_behaviour ? @model_class.where(rule.conditions) : @model_class.where_not(rule.conditions)
+          rule = @rules.first
+          rule.base_behavior ? @model_class.where(rule.conditions) : @model_class.where_not(rule.conditions)
         else
           rules = {rules_with_association: [], rules_without_association: []}
           associations_keys = @model_class.associations_keys
@@ -24,7 +25,7 @@ module CanCan
       def association_rule_records(rules)
         records = []
         rules.each do |rule|
-          if rule.base_behaviour
+          if rule.base_behavior
             records = records | @model_class.where(rule.conditions)
           else
             records = records & @model_class.where_not(rule.conditions)
@@ -34,17 +35,22 @@ module CanCan
       end
 
       def non_associated_rule_records(records, rules)
-        can_rules = rules.select{|rule| rule.base_behaviour}
         base_class_name = @model_class.name.downcase
-        conditions = '(true)'
-        can_rules.each do |rule|
-          condition = ' OR ('
+        conditions = ''
+        rules.each do |rule|
+          next if rule.conditions.blank?
+          if rule.base_behavior   
+            condition = conditions.blank? ? '(' : ' OR ('
+          else
+            condition = conditions.blank? ? ' NOT (' : ' AND NOT ('
+          end
           rule.conditions.each do |key, value|
             condition += (base_class_name + '.' + key.to_s + '=' + value.to_s)
           end
           condition += ')'
+          conditions += condition
         end
-        conditions += condition
+        records = records | @model_class.as(base_class_name.to_sym).where(conditions)
       end
     end
   end
