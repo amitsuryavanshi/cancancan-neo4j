@@ -1,36 +1,27 @@
-$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
-require 'cancancan/neo4j'
-Dir["#{__dir__}/support/*.rb"].each { |f| require f }
+require 'rubygems'
+require 'bundler/setup'
 
+Bundler.require
+
+require 'matchers'
 require 'cancan/matchers'
 
-RSpec.configure do |config|
-  config.expect_with :rspec do |expectations|
-    expectations.include_chain_clauses_in_custom_matcher_descriptions = true
-  end
-
-  config.mock_with :rspec do |mocks|
-    mocks.verify_partial_doubles = true
-  end
-
-  config.filter_run :focus
-  config.run_all_when_everything_filtered = true
-
-  config.example_status_persistence_file_path = 'spec/examples.txt'
-
-  config.disable_monkey_patching!
-
-  config.warnings = true
-
-  config.default_formatter = 'doc' if config.files_to_run.one?
-
-  config.profile_examples = 10
-
-  config.order = :random
-
-  Kernel.srand config.seed
+# I8n setting to fix deprecation.
+if defined?(I18n) && I18n.respond_to?('enforce_available_locales=')
+  I18n.enforce_available_locales = false
 end
 
-Dir["#{File.dirname(__FILE__)}/support/**/*.rb"].each do |f|
-  require f
+# Add support to load paths
+$LOAD_PATH.unshift File.expand_path('../support', __FILE__)
+Dir["#{File.dirname(__FILE__)}/support/**/*.rb"].each { |f| require f }
+
+RSpec.configure do |config|
+  config.filter_run focus: true
+  config.run_all_when_everything_filtered = true
+  config.mock_with :rspec
+  config.order = 'random'
+
+  config.expect_with :rspec do |c|
+    c.syntax = :expect
+  end
 end
