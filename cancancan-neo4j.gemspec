@@ -28,4 +28,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'coveralls', '~> 0.8'
   spec.add_development_dependency 'codeclimate-test-reporter', '~> 1.0'
   spec.add_development_dependency 'neo4j', '~> 9.0.0'
+  spec.add_development_dependency 'pry', '~> 0.11.3'
 end

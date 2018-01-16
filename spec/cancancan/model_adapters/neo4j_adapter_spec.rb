@@ -1,23 +1,11 @@
 require 'spec_helper'
-require 'neo4j/core/cypher_session/adaptors/http'
 
 if defined? CanCan::ModelAdapters::Neo4jAdapter
 
   describe CanCan::ModelAdapters::Neo4jAdapter do
     before :each do
-      neo4j_adaptor = Neo4j::Core::CypherSession::Adaptors::HTTP.new('http://neo4j:password@localhost:7474')
-      Neo4j::ActiveBase.current_session = Neo4j::Core::CypherSession.new(neo4j_adaptor)
-      session = Neo4j::ActiveBase.current_session
-      session.query("CREATE CONSTRAINT ON (n:User) ASSERT n.uuid IS UNIQUE")
-      session.query("CREATE CONSTRAINT ON (n:Project) ASSERT n.uuid IS UNIQUE")
-      session.query("CREATE CONSTRAINT ON (n:Category) ASSERT n.uuid IS UNIQUE")
-      session.query("CREATE CONSTRAINT ON (n:Article) ASSERT n.uuid IS UNIQUE")
-      session.query("CREATE CONSTRAINT ON (n:Comment) ASSERT n.uuid IS UNIQUE")
-      session.query("CREATE CONSTRAINT ON (n:Mention) ASSERT n.uuid IS UNIQUE")
-
-      (@ability = double).extend(CanCan::Ability)
-      
       Article.delete_all
+      (@ability = double).extend(CanCan::Ability)
       @article_table = 'article'
       @comment_table = 'comment'
     end
