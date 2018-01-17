@@ -26,17 +26,33 @@ module CanCan
 
       def records_for_rule(rule)
         return records_for_rule_without_conditions(rule) if rule.conditions.blank?
-        associations_keys = @model_class.associations_keys
-        associations_conditions, model_conditions = rule.conditions.partition{|k, v| associations_keys.include?(k)}.map(&:to_h)
-        raise_association_condition_error(associations_conditions.keys) if associations_conditions.keys.size > 1
+        
         records = @model_class.all
         where_method = rule.base_behavior ? :where : :where_not
+        associations_conditions, model_conditions = bifercate_conditions(rule.conditions)
         records = records.send(where_method, model_conditions) unless model_conditions.blank?
 
         associations_conditions.each do |association, conditions|
-          records = records.branch { send(association).send(where_method, conditions) }
+          branches = construct_branches(association, conditions)
+          records = records.branch { 
+              eval(branches[:association].join('.')).where(branches[:conditions])
+          }
         end
+        
         records.distinct
+      end
+
+      def construct_branches(association, conditions, branches={association: [], conditions: {}})
+        branches[:association] << association
+        branches[:conditions] = conditions
+        conditions.each do |key, value|
+          construct_branches(key, value, branches) if value.is_a?(Hash)
+        end
+        branches
+      end
+
+      def bifercate_conditions(conditions)
+        conditions.partition{|_, value| value.is_a?(Hash)}.map(&:to_h)
       end
 
       def records_for_rule_without_conditions(rule)
