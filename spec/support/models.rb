@@ -25,6 +25,10 @@ class Article
   has_many :in, :comments, origin: :article
   has_many :out, :mentions, type: :mention, model_class: :Mention
   has_one :out, :user, type: :user
+
+  def mentioned_users
+    mentions.user
+  end
 end
 
 class Mention

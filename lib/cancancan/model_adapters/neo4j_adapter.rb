@@ -6,14 +6,14 @@ module CanCan
       end
 
       def database_records
-        @model_class.where('false') if @rules.empty
+        return @model_class.where('false') if @rules.empty?
         return @rules.first.conditions if override_scope
 
         if @rules.size == 1
           records_for_rule(@rules.first)          
         else
           associations_keys = @model_class.associations_keys
-          if @rules.each { |rule| rule.conditions.keys.any?{ |key| associations_keys.include?(key) }
+          if @rules.map(&:conditions).map(&:keys).any?{ |key| associations_keys.include?(key) }
             # if there are multiple rules and any one contains condition on association we will consider only first rule
             records_for_rule(@rules.first)
           else
@@ -30,13 +30,13 @@ module CanCan
         associations_conditions, model_conditions = rule.conditions.partition{|k, v| associations_keys.include?(k)}.map(&:to_h)
         raise_association_condition_error(associations_conditions.keys) if associations_conditions.keys.size > 1
         records = @model_class.all
-        where_method = rule.base_behavior? :where : :where_not
+        where_method = rule.base_behavior ? :where : :where_not
         records = records.send(where_method, model_conditions) unless model_conditions.blank?
 
         associations_conditions.each do |association, conditions|
           records = records.branch { send(association).send(where_method, conditions) }
         end
-        records
+        records.distinct
       end
 
       def records_for_rule_without_conditions(rule)
@@ -56,16 +56,16 @@ module CanCan
       end
 
       def raise_override_scope_error
-        rule_found  = @rules.detect { |rule| rule.conditions.is_a?(Neo4j::ActiveNode::Query::QueryProxy) }
+        rule_found = @rules.detect { |rule| rule.conditions.is_a?(Neo4j::ActiveNode::Query::QueryProxy) }
         raise Error,
               'Unable to merge an ActiveNode scope with other conditions. '\
               "Instead use a hash for #{rule_found.actions.first} #{rule_found.subjects.first} ability."
       end
 
-      def records_for_non_associated_rules(records, rules)
+      def records_for_non_associated_rules(rules)
         base_class_name = @model_class.name.downcase
         conditions = ''
-        rules.each do |rule|
+        rules.reverse.each do |rule|
           condition = ''
           if rule.conditions.blank?
             if rule.base_behavior
@@ -80,13 +80,14 @@ module CanCan
               condition = conditions.blank? ? ' NOT (' : ' AND NOT ('
             end
             rule.conditions.each do |key, value|
-              condition += (base_class_name + '.' + key.to_s + "='" + value.to_s + "'")
+              value = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
+              condition += (base_class_name + '.' + key.to_s + "=" + value)
             end
             condition += ')'
           end
           conditions += condition
         end
-        records = records | @model_class.as(base_class_name.to_sym).where(conditions)
+        @model_class.as(base_class_name.to_sym).where(conditions)
       end
     end
   end
