@@ -95,9 +95,11 @@ module CanCan
             else
               condition = conditions.blank? ? ' NOT (' : ' AND NOT ('
             end
-            rule.conditions.each do |key, value|
+            rule.conditions.each_with_index do |(key, value), index|
+              condition += index == 0 ? '(' : ' AND (' 
               value = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
               condition += (base_class_name + '.' + key.to_s + "=" + value)
+              condition += ')'
             end
             condition += ')'
           end

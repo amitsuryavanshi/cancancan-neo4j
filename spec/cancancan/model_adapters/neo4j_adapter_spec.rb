@@ -114,95 +114,65 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       article1 = Article.create!(secret: true)
       Article.create!(secret: false)
       expect(Article.accessible_by(@ability).to_a).to eq([article1])
+      end
+
+    it 'only reads comments for visible categories through articles' do
+      @ability.can :read, Comment, article: { category: { visible: true } }
+      comment1 = Comment.create!(article: Article.create!(category: Category.create!(visible: true)))
+      Comment.create!(article: Article.create!(category: Category.create!(visible: false)))
+      expect(Comment.accessible_by(@ability)).to eq([comment1])
     end
 
-    # # TODO
-    # it 'only reads comments for visible categories through articles' do
-    #   @ability.can :read, Comment, article: { category: { visible: true } }
-    #   comment1 = Comment.create!(article: Article.create!(category: Category.create!(visible: true)))
-    #   Comment.create!(article: Article.create!(category: Category.create!(visible: false)))
-    #   expect(Comment.accessible_by(@ability)).to eq([comment1])
-    # end
+    it 'does not allow to fetch records when ability with just block present' do
+      @ability.can :read, Article do
+        false
+      end
+      expect(-> { Article.accessible_by(@ability) }).to raise_error(CanCan::Error)
+    end
 
-    # # TODO
-    # it 'allows conditions in SQL and merge with hash conditions' do
-    #   @ability.can :read, Article, published: true
-    #   @ability.can :read, Article, ['secret=?', true]
-    #   article1 = Article.create!(published: true, secret: false)
-    #   article2 = Article.create!(published: true, secret: true)
-    #   article3 = Article.create!(published: false, secret: true)
-    #   Article.create!(published: false, secret: false)
-    #   expect(Article.accessible_by(@ability)).to eq([article1, article2, article3])
-    # end
+    it 'should support more than one deeply nested conditions' do
+      @ability.can :read, Comment, article: {
+        category: {
+          name: 'foo', visible: true
+        }
+      }
+      expect { Comment.accessible_by(@ability) }.to_not raise_error
+    end
 
-    #TODO Fix this
-    # it 'fetches only associated records when using with a scope for conditions' do
-    #   @ability.can :read, Article, Article.where(secret: true)
-    #   category1 = Category.create!(visible: false)
-    #   category2 = Category.create!(visible: true)
-    #   article1 = Article.create!(secret: true)
-    #   article1.category = category1
-    #   article2 = Article.create!(secret: true)
-    #   article2.category = category2
-    #   expect(category1.articles.accessible_by(@ability).to_a).to eq([article1])
-    # end
+    it 'returns empty set if no abilities match' do
+      expect(@ability.model_adapter(Article, :read).database_records).to be_empty
+    end
 
-    # --------------looked till this------------
-    # it 'does not allow to fetch records when ability with just block present' do
-    #   @ability.can :read, Article do
-    #     false
-    #   end
-    #   expect(-> { Article.accessible_by(@ability) }).to raise_error(CanCan::Error)
-    # end
+    it 'returns empty set for cannot clause' do
+      @ability.cannot :read, Article
+      expect(@ability.model_adapter(Article, :read).database_records).to be_empty
+    end
 
-    # it 'should support more than one deeply nested conditions' do
-    #   @ability.can :read, Comment, article: {
-    #     category: {
-    #       name: 'foo', visible: true
-    #     }
-    #   }
-    #   expect { Comment.accessible_by(@ability) }.to_not raise_error
-    # end
+    it 'returns cypher for single `can` definition in front of default `cannot` condition' do
+      @ability.cannot :read, Article
+      @ability.can :read, Article, published: false, secret: true
+      expect(@ability.model_adapter(Article, :read).database_records.to_cypher)
+        .to include("WHERE (false) OR ((#{@article_table}.published=false) AND (#{@article_table}.secret=true))")
+    end
 
-    # it 'does not allow to check ability on object against SQL conditions without block' do
-    #   @ability.can :read, Article, ['secret=?', true]
-    #   expect(-> { @ability.can? :read, Article.new }).to raise_error(CanCan::Error)
-    # end
+    it 'returns true condition for single `can` definition in front of default `can` condition' do
+      @ability.can :read, Article
+      @ability.can :read, Article, published: false, secret: true
+      expect(@ability.model_adapter(Article, :read).database_records.to_cypher).to include("(true)")
+    end
 
-    # it 'has false conditions if no abilities match' do
-    #   expect(@ability.model_adapter(Article, :read).conditions).to eq("'t'='f'")
-    # end
+    it 'returns `false condition` for single `cannot` definition in front of default `cannot` condition' do
+      @ability.cannot :read, Article
+      @ability.cannot :read, Article, published: false, secret: true
+      expect(@ability.model_adapter(Article, :read).database_records.to_cypher).to include("(false)")
+    end
 
-    # it 'returns false conditions for cannot clause' do
-    #   @ability.cannot :read, Article
-    #   expect(@ability.model_adapter(Article, :read).conditions).to eq("'t'='f'")
-    # end
-
-    # it 'returns SQL for single `can` definition in front of default `cannot` condition' do
-    #   @ability.cannot :read, Article
-    #   @ability.can :read, Article, published: false, secret: true
-    #   expect(@ability.model_adapter(Article, :read).conditions)
-    #     .to orderlessly_match(%("#{@article_table}"."published" = 'f' AND "#{@article_table}"."secret" = 't'))
-    # end
-
-    # it 'returns true condition for single `can` definition in front of default `can` condition' do
-    #   @ability.can :read, Article
-    #   @ability.can :read, Article, published: false, secret: true
-    #   expect(@ability.model_adapter(Article, :read).conditions).to eq("'t'='t'")
-    # end
-
-    # it 'returns `false condition` for single `cannot` definition in front of default `cannot` condition' do
-    #   @ability.cannot :read, Article
-    #   @ability.cannot :read, Article, published: false, secret: true
-    #   expect(@ability.model_adapter(Article, :read).conditions).to eq("'t'='f'")
-    # end
-
-    # it 'returns `not (sql)` for single `cannot` definition in front of default `can` condition' do
-    #   @ability.can :read, Article
-    #   @ability.cannot :read, Article, published: false, secret: true
-    #   expect(@ability.model_adapter(Article, :read).conditions)
-    #     .to orderlessly_match(%["not (#{@article_table}"."published" = 'f' AND "#{@article_table}"."secret" = 't')])
-    # end
+    it 'returns `not (condition)` for single `cannot` definition in front of default `can` condition' do
+      @ability.can :read, Article
+      @ability.cannot :read, Article, published: false, secret: true
+      expect(@ability.model_adapter(Article, :read).database_records.to_cypher)
+        .to include("NOT ((article.published=false) AND (article.secret=true))")
+    end
 
     # it 'returns appropriate sql conditions in complex case' do
     #   @ability.can :read, Article
@@ -343,6 +313,35 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
 
     #     expect(Course.accessible_by(@ability)).to eq([valid_course])
     #   end
+    # end
+
+    # # TODO
+    # it 'allows conditions in SQL and merge with hash conditions' do
+    #   @ability.can :read, Article, published: true
+    #   @ability.can :read, Article, ['secret=?', true]
+    #   article1 = Article.create!(published: true, secret: false)
+    #   article2 = Article.create!(published: true, secret: true)
+    #   article3 = Article.create!(published: false, secret: true)
+    #   Article.create!(published: false, secret: false)
+    #   expect(Article.accessible_by(@ability)).to eq([article1, article2, article3])
+    # end
+
+    #TODO Fix this
+    # it 'fetches only associated records when using with a scope for conditions' do
+    #   @ability.can :read, Article, Article.where(secret: true)
+    #   category1 = Category.create!(visible: false)
+    #   category2 = Category.create!(visible: true)
+    #   article1 = Article.create!(secret: true)
+    #   article1.category = category1
+    #   article2 = Article.create!(secret: true)
+    #   article2.category = category2
+    #   expect(category1.articles.accessible_by(@ability).to_a).to eq([article1])
+    # end
+
+    # TODO
+    # it 'does not allow to check ability on object against SQL conditions without block' do
+    #   @ability.can :read, Article, ['secret=?', true]
+    #   expect(-> { @ability.can? :read, Article.new }).to raise_error(CanCan::Error)
     # end
   end
 end
