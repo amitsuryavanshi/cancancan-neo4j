@@ -31,24 +31,23 @@ module CanCan
         where_method = rule.base_behavior ? :where : :where_not
         associations_conditions, model_conditions = bifercate_conditions(rule.conditions)
         records = records.send(where_method, model_conditions) unless model_conditions.blank?
-
+  
         associations_conditions.each do |association, conditions|
-          branches = construct_branches(association, conditions)
-          records = records.branch { 
-              eval(branches[:association].join('.')).where(branches[:conditions])
-          }
+          branch_chain = construct_branches(association, conditions)
+          records = records.branch { eval(branch_chain)}
         end
-        
         records.distinct
       end
-
-      def construct_branches(association, conditions, branches={association: [], conditions: {}})
-        branches[:association] << association
-        branches[:conditions] = conditions
-        conditions.each do |key, value|
-          construct_branches(key, value, branches) if value.is_a?(Hash)
+      
+      def construct_branches(association, conditions, branch_chain='')
+        branch_chain += '.' unless branch_chain.blank?
+        branch_chain += association.to_s
+        associations_conditions, model_conditions = bifercate_conditions(conditions)
+        branch_chain += ".where(#{model_conditions})" unless model_conditions.blank?
+        associations_conditions.each do |association, conditions|
+          branch_chain = construct_branches(association, conditions, branch_chain)
         end
-        branches
+        branch_chain
       end
 
       def bifercate_conditions(conditions)

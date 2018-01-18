@@ -62,7 +62,7 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       mention = Mention.create!
       mention.user = user
       cited.mentions << mention
-      @ability.can :read, Article, mentions: { id: mention.id }
+      @ability.can :read, Article, mentions: { id: mention.id, user: {id: user.id} }
       expect(Article.accessible_by(@ability).to_a).to eq([cited])
     end
 
@@ -173,6 +173,8 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       expect(@ability.model_adapter(Article, :read).database_records.to_cypher)
         .to include("NOT ((article.published=false) AND (article.secret=true))")
     end
+
+    # ----------- checked till this ----------------
 
     # it 'returns appropriate sql conditions in complex case' do
     #   @ability.can :read, Article
