@@ -9,50 +9,85 @@ module CanCan
         return @model_class.where('false') if @rules.empty?
         return @rules.first.conditions if override_scope
         if @rules.size == 1
-          records_for_rule(@rules.first)          
+          records = records_for_rule(@rules.first)          
         else
           associations_keys = @model_class.associations_keys
-          if @rules.map(&:conditions).map(&:keys).any?{ |key| associations_keys.include?(key) }
+          if @rules.map(&:conditions).map(&:keys).flatten.any?{ |key| associations_keys.include?(key) }
             # if there are multiple rules and any one contains condition on association we will consider only first rule
-            records_for_rule_with_associations(@rules)
+            records = records_for_rule_with_associations(@rules)
           else
             records = records_for_non_associated_rules(@rules)
           end
         end
+        records.distinct
       end
 
       private
 
       def records_for_rule_with_associations(rules)
-        query_proxy = construct_matches.proxy_as(@base_class, var_name(class_constant))
+        query_proxy = construct_matches.proxy_as(@model_class, var_name(@model_class))
         
-        conditions_strig = rules.inject('') do |conditions, rule|
-          model_conditions, associations_conditions = bifercate_conditions(rule.conditions)
-          conditions += construct_conditions(@base_class, model_conditions)
-        end
+        conditions_strig = construct_conditions
         query_proxy.where(conditions_strig)
+      end
+
+      def construct_conditions
+        @rules.each_with_index.inject('') do |conditions, (rule, index)|
+          if rule.conditions.blank?
+            rule_conditions = rule.base_behavior ? "(true)" : "(false)"
+          else
+            associations_conditions, model_conditions = bifercate_conditions(rule.conditions)
+            rule_conditions = ''
+            rule_conditions += construct_conditions_for_model(model_conditions, @model_class) unless model_conditions.blank?
+            rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
+            rule_conditions += construct_association_conditions(associations_conditions, @model_class) unless associations_conditions.blank?
+          end
+          if conditions.blank?
+            conditions += rule.base_behavior ? '' : ' NOT'
+          else
+            conditions += rule.base_behavior ? ' OR ' : 'AND NOT'
+          end
+          conditions += ('(' + rule_conditions + ')')
+        end
+      end
+
+      def construct_association_conditions(conditions, parent_class, conditions_string='')
+        conditions_string += ' AND ' unless conditions_string.blank?
+        conditions.each do |association, conditions|
+          base_class = parent_class.associations[association].target_class
+          associations_conditions, model_conditions = bifercate_conditions(conditions)
+          conditions_string += construct_conditions_for_model(model_conditions, base_class) unless model_conditions.blank?
+          conditions_string = construct_association_conditions(associations_conditions, base_class, conditions_string) unless associations_conditions.blank?       
+        end
+        conditions_string
+      end
+
+      def construct_conditions_for_model(conditions_hash, class_constant)
+        class_name = var_name(class_constant)
+        conditions = construct_conditions_string(conditions_hash, class_name)
       end
 
       def construct_matches
         query = base_query_proxy.query
         @rules.each do |rule|
           rule.associations_hash.each do |association, nested_hash|
-            match_string = get_match(@base_class, association)
+            match_string = get_match(@model_class, association)
             if nested_hash.empty?
               query = rule.base_behavior ? query.optional_match(match_string) : query.match(match_string)
             else
-              base_class = @base_class.associations[association].target_class
-              nested_match_string(match_string, base_class, nested_hash)              
+              base_class = @model_class.associations[association].target_class
+              query = nested_match_string(match_string, base_class, nested_hash, rule.base_behavior, query)              
             end
           end
         end
+        query
       end
 
       def nested_match_string(match_string, base_class, nested_hash, base_behavior, query)
         nested_hash.each do |association, nested_associations|
           match_string += partial_nested_match(base_class, association)
           if nested_associations.empty?
-            query = rule.base_behavior ? query.optional_match(match_string) : query.match(match_string)
+            query = base_behavior ? query.optional_match(match_string) : query.match(match_string)
           else
             base_class = base_class.associations[association].target_class
             nested_match_string(match_string, base_class, nested_associations, base_behavior, query)
@@ -75,7 +110,7 @@ module CanCan
       end
 
       def match_node_cypher(node_class)
-        "(#{var_name(node_class)}:`#{base_class.mapped_label_name}`)"
+        "(#{var_name(node_class)}:`#{node_class.mapped_label_name}`)"
       end
 
       def direction_cypher(relationship)
@@ -93,21 +128,12 @@ module CanCan
         "[:`#{relationship.relationship_type}`]"
       end
 
-      def construct_conditions(conditions_hash, class_constant)
-        class_name = var_name(class_constant)
-        conditions = construct_conditions_string(conditions_hash, class_name)
-      end
-
-      def match_and_conditions_for_rule(rule)
-        associations_conditions, model_conditions = bifercate_conditions(rule.conditions)
-      end
-
       def base_query_proxy
         @model_class.as(var_name(@model_class))
       end
 
       def var_name(class_constant)
-        class_constant.name.downcase.to_sym
+        class_constant.name.downcase
       end
 
       def records_for_rule(rule)
@@ -122,7 +148,7 @@ module CanCan
           branch_chain = construct_branches(association, conditions)
           records = records.branch { eval(branch_chain)}
         end
-        records.distinct
+        records
       end
       
       def construct_branches(association, conditions, branch_chain='')
