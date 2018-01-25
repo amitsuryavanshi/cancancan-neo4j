@@ -25,14 +25,17 @@ module CanCan
       private
 
       def records_for_rule_with_associations(rules)
-        query_proxy = construct_matches.proxy_as(@model_class, var_name(@model_class))
-        
-        conditions_strig = construct_conditions
-        query_proxy.where(conditions_strig)
+        query_proxy = 
+        cypher_options = construct_cypher_options
+        base_query_proxy.query
+          .match(cypher_options[:match_string])
+          .proxy_as(@model_class, var_name(@model_class))
+          .where(cypher_options[:conditions])
       end
 
-      def construct_conditions
-        @rules.each_with_index.inject('') do |conditions, (rule, index)|
+      def construct_cypher_options
+        cypher_options={conditions: '', matches: ''}
+        @rules.each_with_index.inject(cypher_options) do |conditions, (rule, index)|
           if rule.conditions.blank?
             rule_conditions = rule.base_behavior ? "(true)" : "(false)"
           else
@@ -40,26 +43,48 @@ module CanCan
             rule_conditions = ''
             rule_conditions += construct_conditions_for_model(model_conditions, @model_class) unless model_conditions.blank?
             rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
-            rule_conditions += construct_association_conditions(associations_conditions, @model_class) unless associations_conditions.blank?
+            
+            unless associations_conditions.blank?
+              path_start_node = match_node_cypher(@model_class)
+              associations_options = construct_association_conditions(conditions: associations_conditions,
+              parent_class: @model_class, path: path_start_node)
+              rule_conditions += (associations_options[:path] + ' AND ' + associations_options[:conditions_string])
+              cypher_options[:match_string] = associations_options[:match_string]
+            end
           end
-          if conditions.blank?
-            conditions += rule.base_behavior ? '' : ' NOT'
+          if cypher_options[:conditions].blank?
+            cypher_options[:conditions] += rule.base_behavior ? '' : ' NOT'
           else
-            conditions += rule.base_behavior ? ' OR ' : 'AND NOT'
+            cypher_options[:conditions] += rule.base_behavior ? ' OR ' : 'AND NOT'
           end
-          conditions += ('(' + rule_conditions + ')')
+          cypher_options[:conditions] += ('(' + rule_conditions + ')')
         end
+        cypher_options
       end
 
-      def construct_association_conditions(conditions, parent_class, conditions_string='')
+      def construct_association_conditions(conditions:, parent_class:, path:, conditions_string: '', match_string: '')
         conditions_string += ' AND ' unless conditions_string.blank?
         conditions.each do |association, conditions|
-          base_class = parent_class.associations[association].target_class
+          relationship = parent_class.associations[association]
+          path += append_path(relationship)
           associations_conditions, model_conditions = bifercate_conditions(conditions)
-          conditions_string += construct_conditions_for_model(model_conditions, base_class) unless model_conditions.blank?
-          conditions_string = construct_association_conditions(associations_conditions, base_class, conditions_string) unless associations_conditions.blank?       
+          if !model_conditions.blank?
+            conditions_string += construct_conditions_for_model(model_conditions, relationship.target_class)
+            match_string += ',' unless match_string.blank?
+            match_string += match_node_cypher(relationship.target_class)
+          end
+          unless associations_conditions.blank?
+            options =   construct_association_conditions(conditions: associations_conditions,
+              parent_class: relationship.target_class, conditions_string: conditions_string, path: path, match_string: match_string)       
+            path, conditions_string, match_string = options[:path], options[:conditions_string], options[:match_string]
+          end
         end
-        conditions_string
+        {path: path, conditions_string: conditions_string, match_string: match_string}
+      end
+
+      def append_path(relationship)
+        direction_cypher(relationship) +
+        match_node_cypher(relationship.target_class)
       end
 
       def construct_conditions_for_model(conditions_hash, class_constant)
@@ -96,11 +121,7 @@ module CanCan
         query
       end
 
-      def partial_nested_match(base_class, association)
-        relationship = base_class.associations[association]
-        direction_cypher(relationship) +
-        match_node_cypher(relationship.target_class)
-      end
+      
 
       def get_match(base_class, match)
         relationship = base_class.associations[match]
