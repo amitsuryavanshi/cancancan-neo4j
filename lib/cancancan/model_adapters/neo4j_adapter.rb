@@ -35,7 +35,7 @@ module CanCan
 
       def construct_cypher_options
         cypher_options={conditions: '', matches: ''}
-        @rules.each_with_index.inject(cypher_options) do |conditions, (rule, index)|
+        @rules.reverse.each_with_index.inject(cypher_options) do |conditions, (rule, index)|
           if rule.conditions.blank?
             rule_conditions = rule.base_behavior ? "(true)" : "(false)"
           else
@@ -66,8 +66,8 @@ module CanCan
         conditions_string += ' AND ' unless conditions_string.blank?
         conditions.each do |association, conditions|
           relationship = parent_class.associations[association]
-          path += append_path(relationship)
           associations_conditions, model_conditions = bifercate_conditions(conditions)
+          path += append_path(relationship, model_conditions.blank?)
           if !model_conditions.blank?
             conditions_string += construct_conditions_for_model(model_conditions, relationship.target_class)
             match_string += ',' unless match_string.blank?
@@ -82,9 +82,9 @@ module CanCan
         {path: path, conditions_string: conditions_string, match_string: match_string}
       end
 
-      def append_path(relationship)
+      def append_path(relationship, without_end_node)
         direction_cypher(relationship) +
-        match_node_cypher(relationship.target_class)
+        (without_end_node ? '()' : match_node_cypher(relationship.target_class))
       end
 
       def construct_conditions_for_model(conditions_hash, class_constant)

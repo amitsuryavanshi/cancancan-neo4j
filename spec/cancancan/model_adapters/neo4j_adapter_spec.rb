@@ -55,15 +55,47 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       expect(Article.accessible_by(@ability).to_a).to eq([article1, article2, article3])
     end
 
-    it 'fetches any articles which we are cited in' do
-      user = User.create!
-      cited = Article.create!
-      Article.create!
-      mention = Mention.create!
-      mention.user = user
-      cited.mentions << mention
-      @ability.can :read, Article, mentions: { id: mention.id, user: {id: user.id} }
-      expect(Article.accessible_by(@ability).to_a).to eq([cited])
+    context 'multiple rules' do
+      before :each do
+        @user = User.create!(name: 'Chunky')
+        @cited = Article.create!(published: true)
+        Article.create!(published: true)
+        @mention = Mention.create!(active: true)
+        @mention.user = @user
+        @cited.mentions << @mention
+      end
+
+      context 'condition on 1st level deep model' do
+        it 'fetches any articles which we are cited in' do
+          @ability.can :read, Article, mentions: { active: true }
+          @ability.can :read, Article, published: false
+          expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+        end
+      end
+
+      context 'condition on 2nd level deep model' do
+        it 'fetches any articles which we are cited in' do
+          @ability.can :read, Article, mentions: {user: {name: 'Chunky'} }
+          @ability.can :read, Article, published: false
+          expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+        end
+      end
+
+      context 'condition on both 1st level and 2nd level deep model' do
+        it 'fetches any articles which we are cited in' do
+          @ability.can :read, Article, mentions: {active: true, user: {name: 'Chunky'} }
+          @ability.can :read, Article, published: false
+          expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+        end
+      end
+
+      context 'Combination of can and cannot rule' do
+        it 'fetches any articles which we are cited in' do
+          @ability.can :read, Article, mentions: {active: true, user: {name: 'Chunky'} }
+          @ability.cannot :read, Article, published: false
+          expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+        end
+      end
     end
 
     it 'fetches only the articles that are published and not secret' do

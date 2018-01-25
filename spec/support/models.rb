@@ -33,6 +33,8 @@ end
 
 class Mention
   include Neo4j::ActiveNode
+  property :active, type: Boolean
+
   has_one :in, :article, type: :mention
   has_one :out, :user, type: :user
 end
@@ -46,6 +48,7 @@ end
 
 class User
   include Neo4j::ActiveNode
+  property :name, type: String
 
   has_many :in, :articles, origin: :user
   has_many :in, :mentions, origin: :user
