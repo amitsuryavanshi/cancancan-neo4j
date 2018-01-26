@@ -21,5 +21,5 @@ gem 'cancancan-neo4j'
 
 ## Caution 
 
-If you soecify multiple can or can not rules with anyone having condition on association, you will get a performance hit.  
+If you specify multiple can or can not rules with anyone having condition on association, you will get a performance hit.  
 
