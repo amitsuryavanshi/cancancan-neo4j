@@ -53,3 +53,19 @@ class User
   has_many :in, :articles, origin: :user
   has_many :in, :mentions, origin: :user
 end
+
+module Namespace
+end
+
+class Namespace::TableX
+  include Neo4j::ActiveNode
+  
+  has_many :in, :table_zs, type: :table_x, model_class: 'Namespace::TableZ'
+end
+
+class Namespace::TableZ
+  include Neo4j::ActiveNode
+  
+  has_one :out, :table_x, type: :table_x, model_class: 'Namespace::TableX'
+  has_one :out, :user, type: :user
+end

@@ -11,14 +11,14 @@ module CanCan
         if @rules.size == 1
           records = records_for_rule(@rules.first)          
         else
-          records = records_for_multiple(@rules)
+          records = records_for_multiple_rules(@rules)
         end
         records.distinct
       end
 
       private
 
-      def records_for_multiple(rules)
+      def records_for_multiple_rules(rules)
         base_query = base_query_proxy.query
         cypher_options = construct_cypher_options
         base_query = base_query.match(cypher_options[:match_string]) unless cypher_options[:match_string].blank?
@@ -32,18 +32,7 @@ module CanCan
           if rule.conditions.blank?
             rule_conditions = rule.base_behavior ? "(true)" : "(false)"
           else
-            associations_conditions, model_conditions = bifercate_conditions(rule.conditions)
-            rule_conditions = ''
-            rule_conditions += construct_conditions_for_model(model_conditions, @model_class) unless model_conditions.blank?
-            rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
-            
-            unless associations_conditions.blank?
-              path_start_node = match_node_cypher(@model_class)
-              associations_options = construct_association_conditions(conditions: associations_conditions,
-              parent_class: @model_class, path: path_start_node)
-              rule_conditions += (associations_options[:path] + ' AND ' + associations_options[:conditions_string])
-              cypher_options[:match_string] = associations_options[:match_string]
-            end
+            rule_conditions, cypher_options = cypher_options_for_rule(rule, cypher_options)  
           end
           
           cypher_options[:conditions] += rule.base_behavior ? ' OR ' : ' AND NOT' unless cypher_options[:conditions].blank?
@@ -53,11 +42,27 @@ module CanCan
         end
       end
 
+      def cypher_options_for_rule(rule, cypher_options)
+        associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
+        rule_conditions = ''
+        rule_conditions += construct_conditions_for_model(model_conditions, @model_class) unless model_conditions.blank?
+        rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
+        
+        unless associations_conditions.blank?
+          path_start_node = match_node_cypher(@model_class)
+          associations_options = construct_association_conditions(conditions: associations_conditions,
+          parent_class: @model_class, path: path_start_node)
+          rule_conditions += (associations_options[:path] + ' AND ' + associations_options[:conditions_string])
+          cypher_options[:match_string] = associations_options[:match_string]
+        end
+        [rule_conditions, cypher_options]
+      end
+
       def construct_association_conditions(conditions:, parent_class:, path:, conditions_string: '', match_string: '')
         conditions_string += ' AND ' unless conditions_string.blank?
         conditions.each do |association, conditions|
           relationship = parent_class.associations[association]
-          associations_conditions, model_conditions = bifercate_conditions(conditions)
+          associations_conditions, model_conditions = bifurcate_conditions(conditions)
           path += append_path(relationship, model_conditions.blank?)
           if !model_conditions.blank?
             conditions_string += construct_conditions_for_model(model_conditions, relationship.target_class)
@@ -107,7 +112,7 @@ module CanCan
       end
 
       def var_name(class_constant)
-        class_constant.name.downcase
+        class_constant.name.downcase.split('::').join('_')
       end
 
       def records_for_rule(rule)
@@ -115,7 +120,7 @@ module CanCan
 
         records = base_query_proxy
         where_method = rule.base_behavior ? :where : :where_not
-        associations_conditions, model_conditions = bifercate_conditions(rule.conditions)
+        associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
         records = records.send(where_method, model_conditions) unless model_conditions.blank?
   
         associations_conditions.each do |association, conditions|
@@ -128,7 +133,7 @@ module CanCan
       def construct_branches(association, conditions, branch_chain='')
         branch_chain += '.' unless branch_chain.blank?
         branch_chain += association.to_s
-        associations_conditions, model_conditions = bifercate_conditions(conditions)
+        associations_conditions, model_conditions = bifurcate_conditions(conditions)
         branch_chain += ".where(#{model_conditions})" unless model_conditions.blank?
         associations_conditions.each do |association, conditions|
           branch_chain = construct_branches(association, conditions, branch_chain)
@@ -136,7 +141,7 @@ module CanCan
         branch_chain
       end
 
-      def bifercate_conditions(conditions)
+      def bifurcate_conditions(conditions)
         conditions.partition{|_, value| value.is_a?(Hash)}.map(&:to_h)
       end
 
