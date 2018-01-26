@@ -11,31 +11,24 @@ module CanCan
         if @rules.size == 1
           records = records_for_rule(@rules.first)          
         else
-          associations_keys = @model_class.associations_keys
-          if @rules.map(&:conditions).map(&:keys).flatten.any?{ |key| associations_keys.include?(key) }
-            # if there are multiple rules and any one contains condition on association we will consider only first rule
-            records = records_for_rule_with_associations(@rules)
-          else
-            records = records_for_non_associated_rules(@rules)
-          end
+          records = records_for_multiple(@rules)
         end
         records.distinct
       end
 
       private
 
-      def records_for_rule_with_associations(rules)
-        query_proxy = 
+      def records_for_multiple(rules)
+        base_query = base_query_proxy.query
         cypher_options = construct_cypher_options
-        base_query_proxy.query
-          .match(cypher_options[:match_string])
+        base_query = base_query.match(cypher_options[:match_string]) unless cypher_options[:match_string].blank?
+        base_query
           .proxy_as(@model_class, var_name(@model_class))
           .where(cypher_options[:conditions])
       end
 
       def construct_cypher_options
-        cypher_options={conditions: '', matches: ''}
-        @rules.reverse.each_with_index.inject(cypher_options) do |conditions, (rule, index)|
+        @rules.reverse.inject({conditions: '', matches: ''}) do |cypher_options, rule|
           if rule.conditions.blank?
             rule_conditions = rule.base_behavior ? "(true)" : "(false)"
           else
@@ -52,14 +45,12 @@ module CanCan
               cypher_options[:match_string] = associations_options[:match_string]
             end
           end
-          if cypher_options[:conditions].blank?
-            cypher_options[:conditions] += rule.base_behavior ? '' : ' NOT'
-          else
-            cypher_options[:conditions] += rule.base_behavior ? ' OR ' : 'AND NOT'
-          end
+          
+          cypher_options[:conditions] += rule.base_behavior ? ' OR ' : ' AND NOT' unless cypher_options[:conditions].blank?
+
           cypher_options[:conditions] += ('(' + rule_conditions + ')')
+          cypher_options
         end
-        cypher_options
       end
 
       def construct_association_conditions(conditions:, parent_class:, path:, conditions_string: '', match_string: '')
@@ -90,44 +81,6 @@ module CanCan
       def construct_conditions_for_model(conditions_hash, class_constant)
         class_name = var_name(class_constant)
         conditions = construct_conditions_string(conditions_hash, class_name)
-      end
-
-      def construct_matches
-        query = base_query_proxy.query
-        @rules.each do |rule|
-          rule.associations_hash.each do |association, nested_hash|
-            match_string = get_match(@model_class, association)
-            if nested_hash.empty?
-              query = rule.base_behavior ? query.optional_match(match_string) : query.match(match_string)
-            else
-              base_class = @model_class.associations[association].target_class
-              query = nested_match_string(match_string, base_class, nested_hash, rule.base_behavior, query)              
-            end
-          end
-        end
-        query
-      end
-
-      def nested_match_string(match_string, base_class, nested_hash, base_behavior, query)
-        nested_hash.each do |association, nested_associations|
-          match_string += partial_nested_match(base_class, association)
-          if nested_associations.empty?
-            query = base_behavior ? query.optional_match(match_string) : query.match(match_string)
-          else
-            base_class = base_class.associations[association].target_class
-            nested_match_string(match_string, base_class, nested_associations, base_behavior, query)
-          end
-        end
-        query
-      end
-
-      
-
-      def get_match(base_class, match)
-        relationship = base_class.associations[match]
-        match_node_cypher(base_class) +
-        direction_cypher(relationship) +
-        match_node_cypher(relationship.target_class)
       end
 
       def match_node_cypher(node_class)
@@ -208,30 +161,6 @@ module CanCan
         raise Error,
               'Unable to merge an ActiveNode scope with other conditions. '\
               "Instead use a hash for #{rule_found.actions.first} #{rule_found.subjects.first} ability."
-      end
-
-      def records_for_non_associated_rules(rules)
-        base_class_name = @model_class.name.downcase
-        conditions = ''
-        rules.reverse.each do |rule|
-          condition = ''
-          if rule.conditions.blank?
-            if rule.base_behavior
-              condition = conditions.blank? ? "(true)" : " OR (true)"
-            else
-              condition = conditions.blank? ? "(false)" : " AND (false)"
-            end
-          else
-            if rule.base_behavior   
-              condition = conditions.blank? ? '(' : ' OR ('
-            else
-              condition = conditions.blank? ? ' NOT (' : ' AND NOT ('
-            end
-            condition += (construct_conditions_string(rule.conditions, base_class_name) + ')')
-          end
-          conditions += condition
-        end
-        @model_class.as(base_class_name.to_sym).where(conditions)
       end
 
       def construct_conditions_string(conditions_hash, base_class_name)

@@ -184,7 +184,7 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       @ability.cannot :read, Article
       @ability.can :read, Article, published: false, secret: true
       expect(@ability.model_adapter(Article, :read).database_records.to_cypher)
-        .to include("WHERE (false) OR ((#{@article_table}.published=false) AND (#{@article_table}.secret=true))")
+        .to include("WHERE ((false)) OR ((article.published=false) AND (article.secret=true))")
     end
 
     it 'returns true condition for single `can` definition in front of default `can` condition' do
@@ -203,7 +203,7 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       @ability.can :read, Article
       @ability.cannot :read, Article, published: false, secret: true
       expect(@ability.model_adapter(Article, :read).database_records.to_cypher)
-        .to include("NOT ((article.published=false) AND (article.secret=true))")
+        .to include("WHERE ((true)) AND NOT((article.published=false) AND (article.secret=true))")
     end
 
     # ----------- checked till this ----------------

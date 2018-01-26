@@ -39,8 +39,7 @@ session_adaptor = case TEST_SESSION_MODE
 
                     case URI(server_url).scheme
                     when 'http'
-                      #Neo4j::Core::CypherSession::Adaptors::HTTP.new(server_url, basic_auth: basic_auth_hash, wrap_level: :proc)
-                      Neo4j::Core::CypherSession::Adaptors::HTTP.new('http://neo4j:password@localhost:7474')
+                      Neo4j::Core::CypherSession::Adaptors::HTTP.new(server_url, basic_auth: basic_auth_hash, wrap_level: :proc)
                     when 'bolt'
                       Neo4j::Core::CypherSession::Adaptors::Bolt.new(server_url, wrap_level: :proc) # , logger_level: Logger::DEBUG)
                     else
