@@ -27,6 +27,8 @@ Dir["#{File.dirname(__FILE__)}/support/**/*.rb"].each { |f| require f }
 
 TEST_SESSION_MODE = RUBY_PLATFORM == 'java' ? :embedded : :http
 
+EMBEDDED_DB_PATH = File.join(Dir.tmpdir, 'neo4j-core-java')
+
 session_adaptor = case TEST_SESSION_MODE
                   when :embedded
                     Neo4j::Core::CypherSession::Adaptors::Embedded.new(EMBEDDED_DB_PATH, impermanent: true, auto_commit: true, wrap_level: :proc)
