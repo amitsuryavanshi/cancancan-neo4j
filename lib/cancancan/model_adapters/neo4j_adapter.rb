@@ -52,7 +52,8 @@ module CanCan
           path_start_node = match_node_cypher(@model_class)
           associations_options = construct_association_conditions(conditions: associations_conditions,
           parent_class: @model_class, path: path_start_node)
-          rule_conditions += (associations_options[:path] + ' AND ' + associations_options[:conditions_string])
+          rule_conditions += associations_options[:path]
+          rule_conditions += (' AND ' + associations_options[:conditions_string]) unless associations_options[:conditions_string].blank?
           cypher_options[:match_string] = associations_options[:match_string]
         end
         [rule_conditions, cypher_options]
