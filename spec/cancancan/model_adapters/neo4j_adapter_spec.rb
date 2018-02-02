@@ -55,14 +55,81 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       expect(Article.accessible_by(@ability).to_a).to eq([article1, article2, article3])
     end
 
-    context 'multiple rules' do
+    context 'nested rules' do
       before :each do
         @user = User.create!(name: 'Chunky')
         @cited = Article.create!(published: true)
-        Article.create!(published: true)
+        @article2 = Article.create!(published: true)
         @mention = Mention.create!(active: true)
         @mention.user = @user
         @cited.mentions << @mention
+      end
+
+      
+      context 'condition to check non existance of relation on base model' do
+        it 'fetches all articles with matching conditions' do
+          @ability.can :read, Article, mentions: nil
+          expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+        end
+      end
+
+      context 'condition to check non existance of relation on base model with base model conditions' do
+        it 'fetches all articles with matching conditions' do
+          @ability.can :read, Article, mentions: nil, published: true
+          expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+        end
+      end
+
+      context 'condition to check non existance of relation on one level deep model' do
+        it 'fetches all articles with matching conditions' do
+          @article2.mentions << Mention.create!
+          @ability.can :read, Article, mentions: {user: nil}
+          expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+        end
+      end
+
+      context 'condition to check non existance of relation on one level deep model with base model conditions' do
+        it 'fetches all articles with matching conditions' do
+          @article2.mentions << Mention.create!
+          @ability.can :read, Article, mentions: {user: nil}, published: true
+          expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+        end
+      end
+
+      context 'with multiple rules' do
+        context 'condition to check non existance of relation on base model' do
+          it 'fetches all articles with matching conditions' do
+            @ability.can :read, Article, mentions: nil
+            @ability.can :manage, Article, published: false
+            expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+          end
+        end
+
+        context 'condition to check non existance of relation on base model with base model conditions' do
+          it 'fetches all articles with matching conditions' do
+            @ability.can :manage, Article, published: false
+            @ability.can :read, Article, mentions: nil, published: true
+            expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+          end
+        end
+
+        context 'condition to check non existance of relation on one level deep model' do
+          it 'fetches all articles with matching conditions' do
+            @article2.mentions << Mention.create!
+            @ability.can :read, Article, mentions: {user: nil}
+            @ability.can :manage, Article, published: false
+            expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+          end
+        end
+
+        context 'condition to check non existance of relation on one level deep model with base model conditions' do
+          it 'fetches all articles with matching conditions' do
+            @article2.mentions << Mention.create!
+            @ability.can :manage, Article, published: false
+            @ability.can :read, Article, mentions: {user: nil}, published: true
+            expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+          end
+        end
       end
 
       context 'condition on 1st level deep model' do
@@ -234,7 +301,7 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       @ability.cannot :update, Article, secret: true
       expect(@ability.model_adapter(Article, :update).database_records.to_cypher)
         .to include("((article.name='Chunky')) OR ((article.published=true)) AND NOT((article.secret=true))")
-      expect(@ability.model_adapter(Article, :manage).database_records.to_cypher).to include("(article.name = ")
+      expect(@ability.model_adapter(Article, :manage).database_records.to_cypher).to include("(article.name=")
       expect(@ability.model_adapter(Article, :read).database_records.to_cypher).to include("(true)")
     end
 

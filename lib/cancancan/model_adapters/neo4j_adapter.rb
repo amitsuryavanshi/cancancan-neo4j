@@ -45,7 +45,7 @@ module CanCan
       def cypher_options_for_rule(rule, cypher_options)
         associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
         rule_conditions = ''
-        rule_conditions += construct_conditions_for_model(model_conditions, @model_class) unless model_conditions.blank?
+        rule_conditions += construct_conditions_string(model_conditions, @model_class) unless model_conditions.blank?
         rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
         
         unless associations_conditions.blank?
@@ -66,7 +66,7 @@ module CanCan
           associations_conditions, model_conditions = bifurcate_conditions(conditions)
           path += append_path(relationship, model_conditions.blank?)
           if !model_conditions.blank?
-            conditions_string += construct_conditions_for_model(model_conditions, relationship.target_class)
+            conditions_string += construct_conditions_string(model_conditions, relationship.target_class)
             match_string += ',' unless match_string.blank?
             match_string += match_node_cypher(relationship.target_class)
           end
@@ -82,11 +82,6 @@ module CanCan
       def append_path(relationship, without_end_node)
         direction_cypher(relationship) +
         (without_end_node ? '()' : match_node_cypher(relationship.target_class))
-      end
-
-      def construct_conditions_for_model(conditions_hash, class_constant)
-        class_name = var_name(class_constant)
-        conditions = construct_conditions_string(conditions_hash, class_name)
       end
 
       def match_node_cypher(node_class)
@@ -122,22 +117,29 @@ module CanCan
         records = base_query_proxy
         where_method = rule.base_behavior ? :where : :where_not
         associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
-        records = records.send(where_method, model_conditions) unless model_conditions.blank?
-  
+        unless model_conditions.blank?
+          model_conditions_string = construct_conditions_string(model_conditions, @model_class)
+          records = records.send(where_method, model_conditions_string)
+        end
+
         associations_conditions.each do |association, conditions|
-          branch_chain = construct_branches(association, conditions)
+          branch_chain = construct_branches(association, conditions, @model_class)
           records = records.branch { eval(branch_chain)}
         end
         records
       end
       
-      def construct_branches(association, conditions, branch_chain='')
+      def construct_branches(association, conditions, base_class, branch_chain='')
+        base_class = base_class.associations[association].target_class
         branch_chain += '.' unless branch_chain.blank?
         branch_chain += association.to_s
         associations_conditions, model_conditions = bifurcate_conditions(conditions)
-        branch_chain += ".where(#{model_conditions})" unless model_conditions.blank?
+        unless model_conditions.blank?
+          model_conditions_string = construct_conditions_string(model_conditions, base_class)
+          branch_chain += ".as(:#{var_name(base_class)}).where(\"#{model_conditions_string}\")"
+        end
         associations_conditions.each do |association, conditions|
-          branch_chain = construct_branches(association, conditions, branch_chain)
+          branch_chain = construct_branches(association, conditions, base_class, branch_chain)
         end
         branch_chain
       end
@@ -169,12 +171,17 @@ module CanCan
               "Instead use a hash for #{rule_found.actions.first} #{rule_found.subjects.first} ability."
       end
 
-      def construct_conditions_string(conditions_hash, base_class_name)
+      def construct_conditions_string(conditions_hash, base_class)
+        variable_name = var_name(base_class)
         condition = ''
         conditions_hash.each_with_index do |(key, value), index|
           condition += index == 0 ? '(' : ' AND (' 
-          value = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
-          condition += (base_class_name + '.' + key.to_s + "=" + value)
+          if base_class.associations_keys.include?(key)
+            condition += (" NOT (#{variable_name})" + append_path(base_class.associations[key], true))
+          else
+            value = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
+            condition += (variable_name + '.' + key.to_s + "=" + value)
+          end
           condition += ')'
         end
         condition
