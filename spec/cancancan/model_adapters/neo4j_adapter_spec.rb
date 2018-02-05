@@ -65,69 +65,142 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
         @cited.mentions << @mention
       end
 
-      
-      context 'condition to check non existance of relation on base model' do
-        it 'fetches all articles with matching conditions' do
-          @ability.can :read, Article, mentions: nil
-          expect(Article.accessible_by(@ability).to_a).to eq([@article2])
-        end
-      end
+      context 'single rule' do
+        context 'can rules' do
+          context 'condition to check non existance of relation on base model' do
+            it 'fetches all articles with matching conditions' do
+              @ability.can :read, Article, mentions: nil
+              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+            end
+          end
 
-      context 'condition to check non existance of relation on base model with base model conditions' do
-        it 'fetches all articles with matching conditions' do
-          @ability.can :read, Article, mentions: nil, published: true
-          expect(Article.accessible_by(@ability).to_a).to eq([@article2])
-        end
-      end
+          context 'condition to check non existance of relation on base model with base model conditions' do
+            it 'fetches all articles with matching conditions' do
+              @ability.can :read, Article, mentions: nil, published: true
+              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+            end
+          end
 
-      context 'condition to check non existance of relation on one level deep model' do
-        it 'fetches all articles with matching conditions' do
-          @article2.mentions << Mention.create!
-          @ability.can :read, Article, mentions: {user: nil}
-          expect(Article.accessible_by(@ability).to_a).to eq([@article2])
-        end
-      end
+          context 'condition to check non existance of relation on one level deep model' do
+            it 'fetches all articles with matching conditions' do
+              @article2.mentions << Mention.create!
+              @ability.can :read, Article, mentions: {user: nil}
+              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+            end
+          end
 
-      context 'condition to check non existance of relation on one level deep model with base model conditions' do
-        it 'fetches all articles with matching conditions' do
-          @article2.mentions << Mention.create!
-          @ability.can :read, Article, mentions: {user: nil}, published: true
-          expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+          context 'condition to check non existance of relation on one level deep model with base model conditions' do
+            it 'fetches all articles with matching conditions' do
+              @article2.mentions << Mention.create!
+              @ability.can :read, Article, mentions: {user: nil}, published: true
+              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+            end
+          end
+        end
+
+        context 'cannot rule' do
+          context 'condition to check non existance of relation on base model' do
+            it 'fetches all articles with matching conditions' do
+              @ability.cannot :read, Article, mentions: nil
+              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+            end
+          end
+
+          context 'condition to check non existance of relation on base model with base model conditions' do
+            it 'fetches all articles with matching conditions' do
+              @ability.cannot :read, Article, mentions: nil, published: true
+              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+            end
+          end
+
+          context 'condition to check non existance of relation on one level deep model' do
+            it 'fetches all articles with matching conditions' do
+              @article2.mentions << Mention.create!
+              @ability.cannot :read, Article, mentions: {user: nil}
+              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+            end
+          end
+
+          context 'condition to check non existance of relation on one level deep model with base model conditions' do
+            it 'fetches all articles with matching conditions' do
+              @article2.mentions << Mention.create!
+              @ability.cannot :read, Article, mentions: {user: nil}, published: false
+              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+            end
+          end
         end
       end
 
       context 'with multiple rules' do
-        context 'condition to check non existance of relation on base model' do
-          it 'fetches all articles with matching conditions' do
-            @ability.can :read, Article, mentions: nil
-            @ability.can :manage, Article, published: false
-            expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+        context 'can rules' do 
+          context 'condition to check non existance of relation on base model' do
+            it 'fetches all articles with matching conditions' do
+              @ability.can :read, Article, mentions: nil
+              @ability.can :manage, Article, published: false
+              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+            end
+          end
+
+          context 'condition to check non existance of relation on base model with base model conditions' do
+            it 'fetches all articles with matching conditions' do
+              @ability.can :manage, Article, published: false
+              @ability.can :read, Article, mentions: nil, published: true
+              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+            end
+          end
+
+          context 'condition to check non existance of relation on one level deep model' do
+            it 'fetches all articles with matching conditions' do
+              @article2.mentions << Mention.create!
+              @ability.can :read, Article, mentions: {user: nil}
+              @ability.can :manage, Article, published: false
+              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+            end
+          end
+
+          context 'condition to check non existance of relation on one level deep model with base model conditions' do
+            it 'fetches all articles with matching conditions' do
+              @article2.mentions << Mention.create!
+              @ability.can :manage, Article, published: false
+              @ability.can :read, Article, mentions: {user: nil}, published: true
+              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+            end
           end
         end
 
-        context 'condition to check non existance of relation on base model with base model conditions' do
-          it 'fetches all articles with matching conditions' do
-            @ability.can :manage, Article, published: false
-            @ability.can :read, Article, mentions: nil, published: true
-            expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+        context 'cannot rules' do 
+          context 'condition to check non existance of relation on base model' do
+            it 'fetches all articles with matching conditions' do
+              @ability.cannot :manage, Article, published: false
+              @ability.cannot :read, Article, mentions: nil
+              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+            end
           end
-        end
 
-        context 'condition to check non existance of relation on one level deep model' do
-          it 'fetches all articles with matching conditions' do
-            @article2.mentions << Mention.create!
-            @ability.can :read, Article, mentions: {user: nil}
-            @ability.can :manage, Article, published: false
-            expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+          context 'condition to check non existance of relation on base model with base model conditions' do
+            it 'fetches all articles with matching conditions' do
+              @ability.cannot :manage, Article, published: false
+              @ability.cannot :read, Article, mentions: nil, published: true
+              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+            end
           end
-        end
 
-        context 'condition to check non existance of relation on one level deep model with base model conditions' do
-          it 'fetches all articles with matching conditions' do
-            @article2.mentions << Mention.create!
-            @ability.can :manage, Article, published: false
-            @ability.can :read, Article, mentions: {user: nil}, published: true
-            expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+          context 'condition to check non existance of relation on one level deep model' do
+            it 'fetches all articles with matching conditions' do
+              @article2.mentions << Mention.create!
+              @ability.cannot :read, Article, mentions: {user: nil}
+              @ability.cannot :manage, Article, published: false
+              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+            end
+          end
+
+          context 'condition to check non existance of relation on one level deep model with base model conditions' do
+            it 'fetches all articles with matching conditions' do
+              @article2.mentions << Mention.create!
+              @ability.cannot :manage, Article, published: false
+              @ability.cannot :read, Article, mentions: {user: nil}, published: true
+              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+            end
           end
         end
       end

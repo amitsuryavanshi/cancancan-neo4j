@@ -32,10 +32,14 @@ module CanCan
           if rule.conditions.blank?
             rule_conditions = rule.base_behavior ? "(true)" : "(false)"
           else
-            rule_conditions, cypher_options = cypher_options_for_rule(rule, cypher_options)  
+            rule_conditions, cypher_options = cypher_options_for_rule(rule, cypher_options)
           end
           
-          cypher_options[:conditions] += rule.base_behavior ? ' OR ' : ' AND NOT' unless cypher_options[:conditions].blank?
+          if cypher_options[:conditions].blank?
+            cypher_options[:conditions] += 'NOT ' if !rule.conditions.blank? && !rule.base_behavior
+          else
+            cypher_options[:conditions] += rule.base_behavior ? ' OR ' : ' AND NOT'
+          end
 
           cypher_options[:conditions] += ('(' + rule_conditions + ')')
           cypher_options
@@ -45,15 +49,15 @@ module CanCan
       def cypher_options_for_rule(rule, cypher_options)
         associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
         rule_conditions = ''
-        rule_conditions += construct_conditions_string(model_conditions, @model_class) unless model_conditions.blank?
+        direct_model_conditions = model_conditions.select {|key, _| !@model_class.associations_keys.include?(key)}
+        path_start_node = match_node_cypher(@model_class)
+        rule_conditions += construct_conditions_string(model_conditions, @model_class, path_start_node) unless model_conditions.blank?
         rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
         
         unless associations_conditions.blank?
-          path_start_node = match_node_cypher(@model_class)
           associations_options = construct_association_conditions(conditions: associations_conditions,
           parent_class: @model_class, path: path_start_node)
-          rule_conditions += associations_options[:path]
-          rule_conditions += (' AND ' + associations_options[:conditions_string]) unless associations_options[:conditions_string].blank?
+          rule_conditions += associations_options[:conditions_string] unless associations_options[:conditions_string].blank?
           cypher_options[:match_string] = associations_options[:match_string]
         end
         [rule_conditions, cypher_options]
@@ -64,13 +68,17 @@ module CanCan
         conditions.each do |association, conditions|
           relationship = parent_class.associations[association]
           associations_conditions, model_conditions = bifurcate_conditions(conditions)
-          path += append_path(relationship, model_conditions.blank?)
-          if !model_conditions.blank?
-            conditions_string += construct_conditions_string(model_conditions, relationship.target_class)
+          direct_model_conditions = conditions.select {|key, _| !relationship.target_class.associations_keys.include?(key)}
+          path += append_path(relationship, direct_model_conditions.blank?)
+          if !direct_model_conditions.blank?
             match_string += ',' unless match_string.blank?
             match_string += match_node_cypher(relationship.target_class)
+            conditions_string += ( path + " AND " )
           end
-          unless associations_conditions.blank?
+
+          conditions_string += construct_conditions_string(model_conditions, relationship.target_class, path) if !model_conditions.blank?
+
+          if !associations_conditions.blank?
             options =   construct_association_conditions(conditions: associations_conditions,
               parent_class: relationship.target_class, conditions_string: conditions_string, path: path, match_string: match_string)       
             path, conditions_string, match_string = options[:path], options[:conditions_string], options[:match_string]
@@ -123,29 +131,33 @@ module CanCan
         end
 
         associations_conditions.each do |association, conditions|
-          branch_chain = construct_branches(association, conditions, @model_class)
+          branch_chain = construct_branches(association, conditions, @model_class, where_method)
           records = records.branch { eval(branch_chain)}
         end
         records
       end
       
-      def construct_branches(association, conditions, base_class, branch_chain='')
+      def construct_branches(association, conditions, base_class, where_method, branch_chain='')
         base_class = base_class.associations[association].target_class
         branch_chain += '.' unless branch_chain.blank?
         branch_chain += association.to_s
         associations_conditions, model_conditions = bifurcate_conditions(conditions)
         unless model_conditions.blank?
           model_conditions_string = construct_conditions_string(model_conditions, base_class)
-          branch_chain += ".as(:#{var_name(base_class)}).where(\"#{model_conditions_string}\")"
+          branch_chain += ".as(:#{var_name(base_class)}).#{where_method}(\"#{model_conditions_string}\")"
         end
         associations_conditions.each do |association, conditions|
-          branch_chain = construct_branches(association, conditions, base_class, branch_chain)
+          branch_chain = construct_branches(association, conditions, base_class, where_method, branch_chain)
         end
         branch_chain
       end
 
       def bifurcate_conditions(conditions)
         conditions.partition{|_, value| value.is_a?(Hash)}.map(&:to_h)
+      end
+
+      def bifurcate_model_conditions(model_conditions)
+        conditions.partition{|key, _| model_class.associations_keys.include?(key)}.map(&:to_h)
       end
 
       def records_for_rule_without_conditions(rule)
@@ -171,13 +183,14 @@ module CanCan
               "Instead use a hash for #{rule_found.actions.first} #{rule_found.subjects.first} ability."
       end
 
-      def construct_conditions_string(conditions_hash, base_class)
+      def construct_conditions_string(conditions_hash, base_class, path='')
         variable_name = var_name(base_class)
         condition = ''
         conditions_hash.each_with_index do |(key, value), index|
           condition += index == 0 ? '(' : ' AND (' 
           if base_class.associations_keys.include?(key)
-            condition += (" NOT (#{variable_name})" + append_path(base_class.associations[key], true))
+            path = "(#{variable_name})" if path.blank?
+            condition += ( (value ? '' : ' NOT ') + path + append_path(base_class.associations[key], true))
           else
             value = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
             condition += (variable_name + '.' + key.to_s + "=" + value)
