@@ -192,20 +192,23 @@ module CanCan
             path = "(#{variable_name})" if path.blank?
             condition += ( (value ? '' : ' NOT ') + path + append_path(base_class.associations[key], true))
           else
-            value = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
-            variable_name_with_key = attribute_name(key, base_class, variable_name)
-            condition += ( variable_name_with_key + "=" + value)
+            if key == :id
+              condition += condition_for_id(key, base_class, variable_name, value)
+            else
+              value = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
+              condition += ( variable_name + '.' + key.to_s + "=" + value)
+            end
           end
           condition += ')'
         end
         condition
       end
 
-      def attribute_name(attribute, base_class, variable_name)
-        if attribute == :id
-          base_class.id_property_name == :neo_id ? "ID(#{variable_name})" : (variable_name + '.' + base_class.id_property_name.to_s)
+      def condition_for_id(attribute, base_class, variable_name, value)
+        if base_class.id_property_name == :neo_id
+          "ID(#{variable_name})=#{value}"
         else
-          variable_name + '.' + attribute.to_s
+          variable_name + '.' + base_class.id_property_name.to_s + '=' + "'#{value}'"
         end
       end
     end
