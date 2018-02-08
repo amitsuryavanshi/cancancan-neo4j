@@ -185,19 +185,17 @@ module CanCan
 
       def construct_conditions_string(conditions_hash, base_class, path='')
         variable_name = var_name(base_class)
-        condition = ''
-        conditions_hash.each_with_index do |(key, value), index|
-          condition += index == 0 ? '(' : ' AND (' 
+        conditions_hash.collect do |key, value|
           if base_class.associations_keys.include?(key)
-            condition += condtion_for_path(path, variable_name, base_class, value, key)
+            condition = condtion_for_path(path: path, variable_name: variable_name,
+                                           base_class: base_class, value: value, key: key)
           elsif key == :id 
-            condition += condition_for_id(base_class, variable_name, value)
+            condition = condition_for_id(base_class, variable_name, value)
           else
-            condition += condition_for_attribute(value, variable_name, key)              
+            condition = condition_for_attribute(value, variable_name, key)              
           end
-          condition += ')'
-        end
-        condition
+          '(' + condition + ')'
+        end.join(' AND ')
       end
 
       def condition_for_attribute(value, variable_name, attribute)
@@ -207,7 +205,7 @@ module CanCan
         lhs + "=" + rhs
       end
 
-      def condtion_for_path(path, variable_name, base_class, value, key)
+      def condtion_for_path(path:, variable_name:, base_class:, value:, key:)
         path = "(#{variable_name})" if path.blank?
         (value ? '' : ' NOT ') + path + append_path(base_class.associations[key], true)
       end
