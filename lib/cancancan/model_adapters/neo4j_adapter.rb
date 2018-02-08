@@ -57,8 +57,7 @@ module CanCan
         unless associations_conditions.blank?
           asso_conditions_string, matches = construct_association_conditions(conditions: associations_conditions,
           parent_class: @model_class, path: path_start_node)
-          rule_conditions += ' AND ' if !rule_conditions.blank?
-          rule_conditions += asso_conditions_string
+          rule_conditions += (rule_conditions.blank? ? asso_conditions_string : (' AND ' + asso_conditions_string))
         end
         [rule_conditions, matches]
       end
