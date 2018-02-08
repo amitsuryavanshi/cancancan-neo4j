@@ -189,22 +189,30 @@ module CanCan
         conditions_hash.each_with_index do |(key, value), index|
           condition += index == 0 ? '(' : ' AND (' 
           if base_class.associations_keys.include?(key)
-            path = "(#{variable_name})" if path.blank?
-            condition += ( (value ? '' : ' NOT ') + path + append_path(base_class.associations[key], true))
+            condition += condtion_for_path(path, variable_name, base_class, value, key)
+          elsif key == :id 
+            condition += condition_for_id(base_class, variable_name, value)
           else
-            if key == :id
-              condition += condition_for_id(key, base_class, variable_name, value)
-            else
-              value = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
-              condition += ( variable_name + '.' + key.to_s + "=" + value)
-            end
+            condition += condition_for_attribute(value, variable_name, key)              
           end
           condition += ')'
         end
         condition
       end
 
-      def condition_for_id(attribute, base_class, variable_name, value)
+      def condition_for_attribute(value, variable_name, attribute)
+        lhs = variable_name + '.' + attribute.to_s
+        return lhs + ' IS NULL ' if value.nil?
+        rhs = [true, false].include?(value) ? value.to_s : "'" + value.to_s + "'"
+        lhs + "=" + rhs
+      end
+
+      def condtion_for_path(path, variable_name, base_class, value, key)
+        path = "(#{variable_name})" if path.blank?
+        (value ? '' : ' NOT ') + path + append_path(base_class.associations[key], true)
+      end
+
+      def condition_for_id(base_class, variable_name, value)
         if base_class.id_property_name == :neo_id
           "ID(#{variable_name})=#{value}"
         else

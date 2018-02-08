@@ -44,6 +44,13 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       expect(Article.accessible_by(@ability).to_a).to eq([article])
     end
 
+    it 'fetches article with nil in attribute conditions' do
+      article = Article.create!
+      Article.create!(name: 'Chunky')
+      @ability.can :read, Article, name: nil
+      expect(Article.accessible_by(@ability).to_a).to eq([article])
+    end
+
     it 'fetches only the articles that are published' do
       @ability.can :read, Article, published: true
       article1 = Article.create!(published: true)
