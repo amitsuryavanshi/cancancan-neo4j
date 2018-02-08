@@ -21,18 +21,20 @@ module CanCan
       def records_for_multiple_rules(rules)
         base_query = base_query_proxy.query
         cypher_options = construct_cypher_options
-        base_query = base_query.match(cypher_options[:match_string]) unless cypher_options[:match_string].blank?
+        match_string = cypher_options[:matches].uniq.join(', ')
+        base_query = base_query.match(match_string) unless match_string.blank?
         base_query
           .proxy_as(@model_class, var_name(@model_class))
           .where(cypher_options[:conditions])
       end
 
       def construct_cypher_options
-        @rules.reverse.inject({conditions: '', matches: ''}) do |cypher_options, rule|
+        @rules.reverse.inject({conditions: '', matches: []}) do |cypher_options, rule|
           if rule.conditions.blank?
             rule_conditions = rule.base_behavior ? "(true)" : "(false)"
           else
-            rule_conditions, cypher_options = cypher_options_for_rule(rule, cypher_options)
+            rule_conditions, match_classes = cypher_options_for_rule(rule)
+            cypher_options[:matches] += match_classes
           end
           
           if cypher_options[:conditions].blank?
@@ -46,9 +48,9 @@ module CanCan
         end
       end
 
-      def cypher_options_for_rule(rule, cypher_options)
+      def cypher_options_for_rule(rule)
         associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
-        rule_conditions = ''
+        rule_conditions, matches = '', []
         path_start_node = match_node_cypher(@model_class)
         rule_conditions += construct_conditions_string(model_conditions, @model_class, path_start_node) unless model_conditions.blank?
         rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
@@ -57,12 +59,12 @@ module CanCan
           associations_options = construct_association_conditions(conditions: associations_conditions,
           parent_class: @model_class, path: path_start_node)
           rule_conditions += associations_options[:conditions_string]
-          cypher_options[:match_string] = associations_options[:match_string]
+          matches = associations_options[:matches]
         end
-        [rule_conditions, cypher_options]
+        [rule_conditions, matches]
       end
 
-      def construct_association_conditions(conditions:, parent_class:, path:, conditions_string: '', match_string: '')
+      def construct_association_conditions(conditions:, parent_class:, path:, conditions_string: '', matches: [])
         conditions_string += ' AND ' unless conditions_string.blank?
         conditions.each do |association, conditions|
           relationship = parent_class.associations[association]
@@ -70,8 +72,7 @@ module CanCan
           direct_model_conditions = conditions.select {|key, _| !relationship.target_class.associations_keys.include?(key)}
           path += append_path(relationship, direct_model_conditions.blank?)
           if !direct_model_conditions.blank?
-            match_string += ',' unless match_string.blank?
-            match_string += match_node_cypher(relationship.target_class)
+            matches << match_node_cypher(relationship.target_class)
             conditions_string += ( path + " AND " )
           end
 
@@ -79,11 +80,11 @@ module CanCan
 
           if !associations_conditions.blank?
             options =   construct_association_conditions(conditions: associations_conditions,
-              parent_class: relationship.target_class, conditions_string: conditions_string, path: path, match_string: match_string)       
-            path, conditions_string, match_string = options[:path], options[:conditions_string], options[:match_string]
+              parent_class: relationship.target_class, conditions_string: conditions_string, path: path, matches: matches)       
+            conditions_string, matches = options[:conditions_string], options[:matches]
           end
         end
-        {path: path, conditions_string: conditions_string, match_string: match_string}
+        {conditions_string: conditions_string, matches: matches}
       end
 
       def append_path(relationship, without_end_node)
