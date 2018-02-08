@@ -55,11 +55,10 @@ module CanCan
         rule_conditions += construct_conditions_string(model_conditions, @model_class, path_start_node) unless model_conditions.blank?
         
         unless associations_conditions.blank?
-          associations_options = construct_association_conditions(conditions: associations_conditions,
+          asso_conditions_string, matches = construct_association_conditions(conditions: associations_conditions,
           parent_class: @model_class, path: path_start_node)
           rule_conditions += ' AND ' if !rule_conditions.blank?
-          rule_conditions += associations_options[:conditions_string]
-          matches = associations_options[:matches]
+          rule_conditions += asso_conditions_string
         end
         [rule_conditions, matches]
       end
@@ -79,12 +78,11 @@ module CanCan
           conditions_string += construct_conditions_string(model_conditions, relationship.target_class, path) if !model_conditions.blank?
 
           if !associations_conditions.blank?
-            options =   construct_association_conditions(conditions: associations_conditions,
+            conditions_string, matches = construct_association_conditions(conditions: associations_conditions,
               parent_class: relationship.target_class, conditions_string: conditions_string, path: path, matches: matches)       
-            conditions_string, matches = options[:conditions_string], options[:matches]
           end
         end
-        {conditions_string: conditions_string, matches: matches}
+        [conditions_string, matches]
       end
 
       def append_path(relationship, without_end_node)
