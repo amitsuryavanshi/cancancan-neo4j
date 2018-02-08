@@ -49,7 +49,6 @@ module CanCan
       def cypher_options_for_rule(rule, cypher_options)
         associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
         rule_conditions = ''
-        direct_model_conditions = model_conditions.select {|key, _| !@model_class.associations_keys.include?(key)}
         path_start_node = match_node_cypher(@model_class)
         rule_conditions += construct_conditions_string(model_conditions, @model_class, path_start_node) unless model_conditions.blank?
         rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
@@ -131,13 +130,14 @@ module CanCan
         end
 
         associations_conditions.each do |association, conditions|
-          branch_chain = construct_branches(association, conditions, @model_class, where_method)
+          branch_chain = construct_branches(association: association, conditions: conditions,
+                                            base_class: @model_class, where_method: where_method)
           records = records.branch { eval(branch_chain)}
         end
         records
       end
       
-      def construct_branches(association, conditions, base_class, where_method, branch_chain='')
+      def construct_branches(association:, conditions:, base_class:, where_method:, branch_chain:'')
         base_class = base_class.associations[association].target_class
         branch_chain += '.' unless branch_chain.blank?
         branch_chain += association.to_s
@@ -147,7 +147,8 @@ module CanCan
           branch_chain += ".as(:#{var_name(base_class)}).#{where_method}(\"#{model_conditions_string}\")"
         end
         associations_conditions.each do |association, conditions|
-          branch_chain = construct_branches(association, conditions, base_class, where_method, branch_chain)
+          branch_chain = construct_branches(association: association, conditions: conditions,
+                                            base_class: base_class, where_method: where_method, branch_chain: branch_chain)
         end
         branch_chain
       end
@@ -162,11 +163,6 @@ module CanCan
 
       def records_for_rule_without_conditions(rule)
         rule.base_behavior ? @model_class.all : @model_class.where_not('true')
-      end
-
-      def raise_association_condition_error(associations)
-        raise Error,
-              "unable to query on multiple association conditions #{associations.join(',')}"
       end
 
       def override_scope
@@ -188,7 +184,7 @@ module CanCan
         conditions_hash.collect do |key, value|
           if base_class.associations_keys.include?(key)
             condition = condtion_for_path(path: path, variable_name: variable_name,
-                                           base_class: base_class, value: value, key: key)
+                                          base_class: base_class, value: value, key: key)
           elsif key == :id 
             condition = condition_for_id(base_class, variable_name, value)
           else
