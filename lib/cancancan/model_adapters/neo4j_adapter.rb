@@ -54,11 +54,17 @@ module CanCan
         path_start_node = match_node_cypher(@model_class)
         rule_conditions += construct_conditions_string(model_conditions, @model_class, path_start_node) unless model_conditions.blank?
         
-        unless associations_conditions.blank?
-          asso_conditions_string, matches = construct_association_conditions(conditions: associations_conditions,
-          parent_class: @model_class, path: path_start_node)
-          rule_conditions += (rule_conditions.blank? ? asso_conditions_string : (' AND ' + asso_conditions_string))
-        end
+        rule_conditions, matches = append_association_conditions(rule_conditions: rule_conditions, conditions_hash: associations_conditions,
+                                                                 parent_class: @model_class, path: path_start_node) unless associations_conditions.blank?
+
+        [rule_conditions, matches]
+      end
+
+      def append_association_conditions(rule_conditions:, conditions_hash:, parent_class:, path: )
+        asso_conditions_string, matches = construct_association_conditions(conditions: conditions_hash,
+                                                                           parent_class: parent_class, path: path)
+        rule_conditions += ' AND ' if !rule_conditions.blank?
+        rule_conditions += asso_conditions_string
         [rule_conditions, matches]
       end
 
