@@ -53,11 +53,11 @@ module CanCan
         rule_conditions, matches = '', []
         path_start_node = match_node_cypher(@model_class)
         rule_conditions += construct_conditions_string(model_conditions, @model_class, path_start_node) unless model_conditions.blank?
-        rule_conditions += ' AND ' if !rule_conditions.blank? && !associations_conditions.blank?
         
         unless associations_conditions.blank?
           associations_options = construct_association_conditions(conditions: associations_conditions,
           parent_class: @model_class, path: path_start_node)
+          rule_conditions += ' AND ' if !rule_conditions.blank?
           rule_conditions += associations_options[:conditions_string]
           matches = associations_options[:matches]
         end
