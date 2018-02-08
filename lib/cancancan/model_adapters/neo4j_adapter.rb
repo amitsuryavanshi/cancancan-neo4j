@@ -31,7 +31,7 @@ module CanCan
       def construct_cypher_options
         @rules.reverse.inject({conditions: '', matches: []}) do |cypher_options, rule|
           if rule.conditions.blank?
-            rule_conditions = rule.base_behavior ? "(true)" : "(false)"
+            rule_conditions = condition_for_rule_without_conditions(rule) 
           else
             rule_conditions, match_classes = cypher_options_for_rule(rule)
             cypher_options[:matches] += match_classes
@@ -44,12 +44,18 @@ module CanCan
         end
       end
 
+      def condition_for_rule_without_conditions(rule)
+        rule.base_behavior ? "(true)" : "(false)"
+      end
+
       def append_and_or_to_conditions(conditions_string, rule)
-        if conditions_string.blank?
-          append_not_to_conditions?(rule) ? ' NOT' : ''
-        else
-          conditions_string + (rule.base_behavior ? ' OR ' : ' AND NOT')
-        end
+        connector = conditions_string.blank? ? '' : conditions_connector(rule)
+        connector += 'NOT' if append_not_to_conditions?(rule)
+        conditions_string + connector
+      end
+
+      def conditions_connector(rule)
+        rule.base_behavior ? ' OR ' : ' AND '
       end
 
       def append_not_to_conditions?(rule)
