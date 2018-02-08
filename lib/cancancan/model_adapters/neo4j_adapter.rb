@@ -73,21 +73,28 @@ module CanCan
         conditions.each do |association, conditions|
           relationship = parent_class.associations[association]
           associations_conditions, model_conditions = bifurcate_conditions(conditions)
-          direct_model_conditions = conditions.select {|key, _| !relationship.target_class.associations_keys.include?(key)}
-          path += append_path(relationship, direct_model_conditions.blank?)
-          if !direct_model_conditions.blank?
-            matches << match_node_cypher(relationship.target_class)
-            conditions_string += ( path + " AND " )
-          end
-
-          conditions_string += construct_conditions_string(model_conditions, relationship.target_class, path) if !model_conditions.blank?
-
-          if !associations_conditions.blank?
-            conditions_string, matches = construct_association_conditions(conditions: associations_conditions,
-              parent_class: relationship.target_class, conditions_string: conditions_string, path: path, matches: matches)       
-          end
+          
+          conditions_string, path, matches = append_model_conditions(relationship: relationship,
+                                                                     model_conditions: model_conditions,
+                                                                     path: path, matches: matches,
+                                                                     conditions_string: conditions_string) 
+          conditions_string, matches = construct_association_conditions(conditions: associations_conditions,
+                                                                        parent_class: relationship.target_class,
+                                                                        conditions_string: conditions_string,
+                                                                        path: path, matches: matches) if !associations_conditions.blank?
         end
         [conditions_string, matches]
+      end
+
+      def append_model_conditions(relationship:, model_conditions:, path:, conditions_string:, matches:)
+        direct_model_conditions = model_conditions.select {|key, _| !relationship.target_class.associations_keys.include?(key)}
+        path += append_path(relationship, direct_model_conditions.blank?)
+        if !direct_model_conditions.blank?
+          matches << match_node_cypher(relationship.target_class)
+          conditions_string += ( path + " AND " )
+        end
+        conditions_string += construct_conditions_string(model_conditions, relationship.target_class, path) if !model_conditions.blank?
+        [conditions_string, path, matches]
       end
 
       def append_path(relationship, without_end_node)
