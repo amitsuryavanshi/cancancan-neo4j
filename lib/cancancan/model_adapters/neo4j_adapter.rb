@@ -56,7 +56,7 @@ module CanCan
         unless associations_conditions.blank?
           associations_options = construct_association_conditions(conditions: associations_conditions,
           parent_class: @model_class, path: path_start_node)
-          rule_conditions += associations_options[:conditions_string] unless associations_options[:conditions_string].blank?
+          rule_conditions += associations_options[:conditions_string]
           cypher_options[:match_string] = associations_options[:match_string]
         end
         [rule_conditions, cypher_options]
