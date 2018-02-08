@@ -37,15 +37,23 @@ module CanCan
             cypher_options[:matches] += match_classes
           end
           
-          if cypher_options[:conditions].blank?
-            cypher_options[:conditions] += 'NOT ' if !rule.conditions.blank? && !rule.base_behavior
-          else
-            cypher_options[:conditions] += rule.base_behavior ? ' OR ' : ' AND NOT'
-          end
+          cypher_options[:conditions] = append_and_or_to_conditions(cypher_options[:conditions], rule)
 
           cypher_options[:conditions] += ('(' + rule_conditions + ')')
           cypher_options
         end
+      end
+
+      def append_and_or_to_conditions(conditions_string, rule)
+        if conditions_string.blank?
+          append_not_to_conditions?(rule) ? ' NOT' : ''
+        else
+          conditions_string + (rule.base_behavior ? ' OR ' : ' AND NOT')
+        end
+      end
+
+      def append_not_to_conditions?(rule)
+        !rule.conditions.blank? && !rule.base_behavior
       end
 
       def cypher_options_for_rule(rule)
