@@ -10,8 +10,6 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       User.delete_all
       Mention.delete_all
       (@ability = double).extend(CanCan::Ability)
-      @article_table = 'article'
-      @comment_table = 'comment'
     end
 
     it 'is for only neo4j classes' do
@@ -58,7 +56,7 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       article2 = Article.create!(published: true, secret: true)
       article3 = Article.create!(published: false, secret: true)
       Article.create!(published: false, secret: false)
-      expect(Article.accessible_by(@ability).to_a).to eq([article1, article2, article3])
+      expect(Article.accessible_by(@ability)).to contain_exactly(article1, article2, article3)
     end
 
     context 'nested rules' do
