@@ -18,7 +18,10 @@ In your `Gemfile`, insert the following line:
 gem 'cancancan'
 gem 'cancancan-neo4j'
 ```
+Defining cancan rules:
 
-## Caution 
+```ruby
+can :read, Article, author: { name: 'Chunky' }
+```
+here name is a property on Author and Article has 'has_one' relation with Author.
 
-If you specify multiple can or can not rules with anyone having condition on association, you will get a performance hit.  
