@@ -1,4 +1,5 @@
 require 'spec_helper'
+require 'support/shared_context_support'
 
 if defined? CanCan::ModelAdapters::Neo4jAdapter
 
@@ -10,8 +11,6 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       User.delete_all
       Mention.delete_all
       (@ability = double).extend(CanCan::Ability)
-      @article_table = 'article'
-      @comment_table = 'comment'
     end
 
     it 'is for only neo4j classes' do
@@ -36,12 +35,21 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       @ability.can :read, Article
       article = Article.create!
       expect(Article.accessible_by(@ability).to_a).to eq([article])
+      expect(@ability).to be_able_to(:read, article)
     end
 
     it 'fetches article with id in conditions' do
       article = Article.create!
       @ability.can :read, Article, id: article.id
       expect(Article.accessible_by(@ability).to_a).to eq([article])
+      expect(@ability).to be_able_to(:read, article)
+    end
+
+    it 'fetches User with id when neo_id is id_property' do
+      User.id_property(:neo_id)
+      user = User.create!
+      @ability.can :read, User, id: user.neo_id
+      expect(User.accessible_by(@ability).to_a).to eq([user])
     end
 
     it 'fetches article with nil in attribute conditions' do
@@ -49,13 +57,16 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       Article.create!(name: 'Chunky')
       @ability.can :read, Article, name: nil
       expect(Article.accessible_by(@ability).to_a).to eq([article])
+      expect(@ability).to be_able_to(:read, article)
     end
 
     it 'fetches only the articles that are published' do
       @ability.can :read, Article, published: true
       article1 = Article.create!(published: true)
-      Article.create!(published: false)
+      article2 = Article.create!(published: false)
       expect(Article.accessible_by(@ability).to_a).to eq([article1])
+      expect(@ability).to be_able_to(:read, article1)
+      expect(@ability).not_to be_able_to(:read, article2)
     end
 
     it 'fetches any articles which are published or secret' do
@@ -65,7 +76,10 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       article2 = Article.create!(published: true, secret: true)
       article3 = Article.create!(published: false, secret: true)
       Article.create!(published: false, secret: false)
-      expect(Article.accessible_by(@ability).to_a).to eq([article1, article2, article3])
+      expect(Article.accessible_by(@ability)).to contain_exactly(article1, article2, article3)
+      expect(@ability).to be_able_to(:read, article1)
+      expect(@ability).to be_able_to(:read, article2)
+      expect(@ability).to be_able_to(:read, article3)
     end
 
     context 'nested rules' do
@@ -80,173 +94,181 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
 
       context 'single rule' do
         context 'can rules' do
+          let(:accessible_article) { @article2 }
+          let(:not_accessible_article) { @cited }
           context 'condition to check non existance of relation on base model' do
-            it 'fetches all articles with matching conditions' do
-              @ability.can :read, Article, mentions: nil
-              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
-            end
+            before(:example) { @ability.can :read, Article, mentions: nil }
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on base model with base model conditions' do
-            it 'fetches all articles with matching conditions' do
-              @ability.can :read, Article, mentions: nil, published: true
-              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
-            end
+            before(:example) { @ability.can :read, Article, mentions: nil, published: true }
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on one level deep model' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @article2.mentions << Mention.create!
-              @ability.can :read, Article, mentions: {user: nil}
-              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+              @ability.can :read, Article, mentions: { user: nil }
             end
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on one level deep model with base model conditions' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @article2.mentions << Mention.create!
-              @ability.can :read, Article, mentions: {user: nil}, published: true
-              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+              @ability.can :read, Article, mentions: { user: nil }, published: true
             end
+            include_context 'match expectations'
           end
         end
 
         context 'cannot rule' do
+          let(:accessible_article) { @cited }
+          let(:not_accessible_article) { @article2 }
+          before(:example) { @ability.can :read, Article }
+
           context 'condition to check non existance of relation on base model' do
-            it 'fetches all articles with matching conditions' do
-              @ability.cannot :read, Article, mentions: nil
-              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
-            end
+            before(:example) { @ability.cannot :read, Article, mentions: nil }
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on base model with base model conditions' do
-            it 'fetches all articles with matching conditions' do
-              @ability.cannot :read, Article, mentions: nil, published: true
-              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
-            end
+            before(:example) { @ability.cannot :read, Article, mentions: nil, published: true }
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on one level deep model' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @article2.mentions << Mention.create!
-              @ability.cannot :read, Article, mentions: {user: nil}
-              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+              @ability.cannot :read, Article, mentions: { user: nil }
             end
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on one level deep model with base model conditions' do
             it 'fetches all articles with matching conditions' do
               @article2.mentions << Mention.create!
-              @ability.cannot :read, Article, mentions: {user: nil}, published: false
-              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+              @ability.cannot :read, Article, mentions: { user: nil }, published: false
+              expect(Article.accessible_by(@ability)).to contain_exactly(@article2, @cited)
+              expect(@ability).to be_able_to(:read, @cited)
             end
           end
         end
       end
 
       context 'with multiple rules' do
-        context 'can rules' do 
+        context 'can rules' do
+          let(:accessible_article) { @article2 }
+          let(:not_accessible_article) { @cited }
           context 'condition to check non existance of relation on base model' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @ability.can :read, Article, mentions: nil
               @ability.can :manage, Article, published: false
-              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
             end
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on base model with base model conditions' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @ability.can :manage, Article, published: false
               @ability.can :read, Article, mentions: nil, published: true
-              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
             end
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on one level deep model' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @article2.mentions << Mention.create!
-              @ability.can :read, Article, mentions: {user: nil}
+              @ability.can :read, Article, mentions: { user: nil }
               @ability.can :manage, Article, published: false
-              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
             end
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on one level deep model with base model conditions' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @article2.mentions << Mention.create!
               @ability.can :manage, Article, published: false
-              @ability.can :read, Article, mentions: {user: nil}, published: true
-              expect(Article.accessible_by(@ability).to_a).to eq([@article2])
+              @ability.can :read, Article, mentions: { user: nil }, published: true
             end
+            include_context 'match expectations'
           end
         end
 
-        context 'cannot rules' do 
+        context 'cannot rules' do
+          let(:accessible_article) { @cited }
+          let(:not_accessible_article) { @article2 }
+          before(:example) { @ability.can :read, Article }
           context 'condition to check non existance of relation on base model' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @ability.cannot :manage, Article, published: false
               @ability.cannot :read, Article, mentions: nil
-              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
             end
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on base model with base model conditions' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @ability.cannot :manage, Article, published: false
               @ability.cannot :read, Article, mentions: nil, published: true
-              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
             end
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on one level deep model' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @article2.mentions << Mention.create!
-              @ability.cannot :read, Article, mentions: {user: nil}
+              @ability.cannot :read, Article, mentions: { user: nil }
               @ability.cannot :manage, Article, published: false
-              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
             end
+            include_context 'match expectations'
           end
 
           context 'condition to check non existance of relation on one level deep model with base model conditions' do
-            it 'fetches all articles with matching conditions' do
+            before(:example) do
               @article2.mentions << Mention.create!
               @ability.cannot :manage, Article, published: false
-              @ability.cannot :read, Article, mentions: {user: nil}, published: true
-              expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+              @ability.cannot :read, Article, mentions: { user: nil }, published: true
             end
+            include_context 'match expectations'
           end
         end
       end
 
-      context 'condition on 1st level deep model' do
-        it 'fetches any articles which we are cited in' do
-          @ability.can :read, Article, mentions: { active: true }
-          @ability.can :read, Article, published: false
-          expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+      context 'condition on relation attribute' do
+        let(:accessible_article) { @cited }
+        let(:not_accessible_article) { @article2 }
+        context 'condition on 1st level deep model' do
+          before(:example) do
+            @ability.can :read, Article, mentions: { active: true }
+            @ability.can :read, Article, published: false
+          end
+          include_context 'match expectations'
         end
-      end
 
-      context 'condition on 2nd level deep model' do
-        it 'fetches any articles which we are cited in' do
-          @ability.can :read, Article, mentions: {user: {name: 'Chunky'} }
-          @ability.can :read, Article, published: false
-          expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+        context 'condition on 2nd level deep model' do
+          before(:example) do
+            @ability.can :read, Article, mentions: { user: { name: 'Chunky' } }
+            @ability.can :read, Article, published: false
+          end
+          include_context 'match expectations'
         end
-      end
 
-      context 'condition on both 1st level and 2nd level deep model' do
-        it 'fetches any articles which we are cited in' do
-          @ability.can :read, Article, mentions: {active: true, user: {name: 'Chunky'} }
-          @ability.can :read, Article, published: false
-          expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+        context 'condition on both 1st level and 2nd level deep model' do
+          before(:example) do
+            @ability.can :read, Article, mentions: { active: true, user: { name: 'Chunky' } }
+            @ability.can :read, Article, published: false
+          end
+          include_context 'match expectations'
         end
-      end
 
-      context 'Combination of can and cannot rule' do
-        it 'fetches any articles which we are cited in' do
-          @ability.can :read, Article, mentions: {active: true, user: {name: 'Chunky'} }
-          @ability.cannot :read, Article, published: false
-          expect(Article.accessible_by(@ability).to_a).to eq([@cited])
+        context 'Combination of can and cannot rule' do
+          before(:example) do
+            @ability.can :read, Article, mentions: { active: true, user: { name: 'Chunky' } }
+            @ability.cannot :read, Article, published: false
+          end
+          include_context 'match expectations'
         end
       end
     end
@@ -299,7 +321,7 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       article1 = Article.create!(secret: true)
       Article.create!(secret: false)
       expect(Article.accessible_by(@ability).to_a).to eq([article1])
-      end
+    end
 
     it 'only reads comments for visible categories through articles' do
       @ability.can :read, Comment, article: { category: { visible: true } }
@@ -337,26 +359,28 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       @ability.cannot :read, Article
       @ability.can :read, Article, published: false, secret: true
       expect(@ability.model_adapter(Article, :read).database_records.to_cypher)
-        .to include("WHERE ((false)) OR ((article.published=false) AND (article.secret=true))")
+        .to include('WHERE ((false)) OR ((article.published=false) AND (article.secret=true))')
     end
 
     it 'returns true condition for single `can` definition in front of default `can` condition' do
       @ability.can :read, Article
       @ability.can :read, Article, published: false, secret: true
-      expect(@ability.model_adapter(Article, :read).database_records.to_cypher).to include("(true)")
+      expect(@ability.model_adapter(Article, :read).database_records.to_cypher).to include('(true)')
     end
 
     it 'returns `false condition` for single `cannot` definition in front of default `cannot` condition' do
       @ability.cannot :read, Article
       @ability.cannot :read, Article, published: false, secret: true
-      expect(@ability.model_adapter(Article, :read).database_records.to_cypher).to include("(false)")
+      expect(@ability.model_adapter(Article, :read).database_records.to_cypher).to include('(false)')
     end
 
     it 'returns `not (condition)` for single `cannot` definition in front of default `can` condition' do
       @ability.can :read, Article
       @ability.cannot :read, Article, published: false, secret: true
+      cypher_string = 'WHERE ((true)) AND NOT((article.published=false)'\
+        ' AND (article.secret=true))'
       expect(@ability.model_adapter(Article, :read).database_records.to_cypher)
-        .to include("WHERE ((true)) AND NOT((article.published=false) AND (article.secret=true))")
+        .to include(cypher_string)
     end
 
     it 'merges :all conditions with other conditions' do
@@ -364,7 +388,7 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       article = Article.create!(user: user)
       ability = Ability.new(user)
       ability.can :manage, :all
-      ability.can :manage, Article, user: {name: user.name}
+      ability.can :manage, Article, user: { name: user.name }
       expect(Article.accessible_by(ability)).to eq([article])
     end
 
@@ -379,25 +403,30 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       expect { @ability.can? :read, Article }.not_to raise_error
     end
 
-
     it 'returns appropriate sql conditions in complex case' do
       @ability.can :read, Article
       @ability.can :manage, Article, name: 'Chunky'
       @ability.can :update, Article, published: true
       @ability.cannot :update, Article, secret: true
-      expect(@ability.model_adapter(Article, :update).database_records.to_cypher)
-        .to include("((article.name='Chunky')) OR ((article.published=true)) AND NOT((article.secret=true))")
-      expect(@ability.model_adapter(Article, :manage).database_records.to_cypher).to include("(article.name=")
-      expect(@ability.model_adapter(Article, :read).database_records.to_cypher).to include("(true)")
+      cypher_string = "((article.name='Chunky')) OR "\
+       '((article.published=true)) AND NOT((article.secret=true))'
+      subject1 = @ability.model_adapter(Article, :update)
+                         .database_records.to_cypher
+      expect(subject1).to include(cypher_string)
+      subject2 = @ability.model_adapter(Article, :manage)
+                         .database_records.to_cypher
+      expect(subject2).to include('(article.name=')
+      subject3 = @ability.model_adapter(Article, :read)
+                         .database_records.to_cypher
+      expect(subject3).to include('(true)')
     end
 
     context 'with namespaced models' do
       it 'fetches all namespace::table_x when one is related by table_y' do
         user = User.create!(name: 'Chunky')
-
         ability = Ability.new(user)
-        ability.can :read, Namespace::TableX, table_zs: { user: {name: 'Chunky'} }
-
+        conditions = { table_zs: { user: { name: 'Chunky' } } }
+        ability.can :read, Namespace::TableX, conditions
         table_x = Namespace::TableX.create!
         table_z = Namespace::TableZ.create(user: user)
         table_x.table_zs << table_z
@@ -405,7 +434,7 @@ if defined? CanCan::ModelAdapters::Neo4jAdapter
       end
     end
 
-    #TODO Fix code to pass this
+    # TODO: Fix code to pass this
     # it 'fetches only associated records when using with a scope for conditions' do
     #   @ability.can :read, Article, Article.where(secret: true)
     #   category1 = Category.create!(visible: false)

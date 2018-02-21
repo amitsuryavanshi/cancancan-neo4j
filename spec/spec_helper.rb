@@ -1,15 +1,16 @@
-require 'rubygems'
-require 'bundler/setup'
+require 'dotenv'
+Dotenv.load
+require 'simplecov'
+SimpleCov.start
 
-Bundler.require
+require 'bundler/setup'
+require 'cancancan/neo4j'
 
 require 'matchers'
 require 'cancan/matchers'
 
-require 'neo4j-core'
 require 'neo4j-server'
 require 'neo4j-embedded' if RUBY_PLATFORM == 'java'
-require 'neo4j'
 
 require 'neo4j/core/cypher_session'
 require 'neo4j/core/cypher_session/adaptors/http'
@@ -33,7 +34,7 @@ session_adaptor = case TEST_SESSION_MODE
                   when :embedded
                     Neo4j::Core::CypherSession::Adaptors::Embedded.new(EMBEDDED_DB_PATH, impermanent: true, auto_commit: true, wrap_level: :proc)
                   when :http
-                    server_url = ENV['NEO4J_URL'] || 'http://localhost:7474'
+                    server_url = ENV['NEO4J_URL'] || 'http://localhost:7475'
                     server_username = ENV['NEO4J_USERNAME'] || 'neo4j'
                     server_password = ENV['NEO4J_PASSWORD'] || 'password'
 

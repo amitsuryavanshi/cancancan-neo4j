@@ -1,28 +1,79 @@
 require 'cancancan/neo4j/cypher_constructor_helper'
+require 'cancancan/neo4j/rule_cypher'
 
 module CanCan
   module ModelAdapters
+    # neo4j adapter for cancan
     class Neo4jAdapter < AbstractAdapter
-      include CanCanCan::Neo4j::CypherConstructorHelper
+
+      def database_records
+        return @model_class.where('false') if @rules.empty?
+        rule = @rules.first
+        return rule.conditions if override_scope
+        records_for_multiple_rules.distinct
+      end
 
       def self.for_class?(model_class)
         model_class <= Neo4j::ActiveNode
       end
 
-      def database_records
-        return @model_class.where('false') if @rules.empty?
-        return @rules.first.conditions if override_scope
-        if @rules.size == 1
-          records = records_for_rule(@rules.first)          
-        else
-          records = records_for_multiple_rules(@rules)
+      def self.override_conditions_hash_matching?(_subject, _conditions)
+        true
+      end
+
+      def self.matches_conditions_hash?(subject, conditions)
+        base_class = subject.class
+        all_conditions_match?(subject, conditions, base_class)
+      end
+
+      def self.all_conditions_match?(subject, conditions, base_class)
+        asso_conditions, model_conditions = CanCanCan::Neo4j::CypherConstructorHelper.bifurcate_conditions(conditions)
+        associations_conditions_match?(asso_conditions, subject, base_class) &&
+          model_conditions_matches?(model_conditions, subject, base_class)
+      end
+
+      def self.model_conditions_matches?(conditions, subject, base_class)
+        return true if conditions.blank?
+        conditions = conditions.partition do |key, _|
+          base_class.associations_keys.include?(key)
         end
-        records.distinct
+        associations_conditions, atrribute_conditions = conditions.map(&:to_h)
+        matches_attribute_conditions?(atrribute_conditions, subject) &&
+          matches_associations_relations(associations_conditions, subject)
+      end
+
+      # checks if associations exists on given node
+      def self.matches_associations_relations(conditions, subject)
+        return true if conditions.blank?
+        conditions.all? do |association, value|
+          association_exists = subject.send(association).exists?
+          value ? association_exists : !association_exists
+        end
+      end
+
+      def self.matches_attribute_conditions?(conditions, subject)
+        return true if conditions.blank?
+        if subject.is_a?(Neo4j::ActiveNode::HasN::AssociationProxy)
+          subject.where(conditions).exists?
+        else
+          conditions.all? do |attribute, value|
+            subject.send(attribute) == value
+          end
+        end
+      end
+
+      def self.associations_conditions_match?(conditions, subject, base_class)
+        return true if conditions.blank?
+        conditions.all? do |association, conditions_hash|
+          current_model = base_class.associations[association].target_class
+          current_subject = subject.send(association)
+          all_conditions_match?(current_subject, conditions_hash, current_model)
+        end
       end
 
       private
 
-      def records_for_multiple_rules(rules)
+      def records_for_multiple_rules
         base_query = base_query_proxy.query
         cypher_options = construct_cypher_options
         match_string = cypher_options[:matches].uniq.join(', ')
@@ -33,139 +84,24 @@ module CanCan
       end
 
       def construct_cypher_options
-        @rules.reverse.inject({conditions: '', matches: []}) do |cypher_options, rule|
-          if rule.conditions.blank?
-            rule_conditions = condition_for_rule_without_conditions(rule) 
-          else
-            rule_conditions, match_classes = cypher_options_for_rule(rule)
-            cypher_options[:matches] += match_classes
-          end
-          
-          cypher_options[:conditions] = append_and_or_to_conditions(cypher_options[:conditions], rule)
-
-          cypher_options[:conditions] += ('(' + rule_conditions + ')')
+        options = { conditions: '', matches: [] }
+        @rules.reverse.each_with_object(options) do |rule, cypher_options|
+          rule_options = { rule: rule, model_class: @model_class }
+          rule_cypher = CanCanCan::Neo4j::RuleCypher.new(rule_options)
+          CanCanCan::Neo4j::CypherConstructorHelper.append_and_or_to_conditions(cypher_options, rule_cypher)
+          cypher_options[:conditions] += ('(' + rule_cypher.rule_conditions + ')')
+          cypher_options[:matches] += rule_cypher.cypher_matches
           cypher_options
         end
-      end
-
-      def append_and_or_to_conditions(conditions_string, rule)
-        connector = conditions_string.blank? ? '' : conditions_connector(rule)
-        connector += 'NOT' if append_not_to_conditions?(rule)
-        conditions_string + connector
-      end
-
-      def append_not_to_conditions?(rule)
-        !rule.conditions.blank? && !rule.base_behavior
-      end
-
-      def cypher_options_for_rule(rule)
-        associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
-        rule_conditions, matches = '', []
-        path_start_node = match_node_cypher(@model_class)
-        rule_conditions += construct_conditions_string(model_conditions, @model_class, path_start_node) unless model_conditions.blank?
-        
-        rule_conditions, matches = append_association_conditions(rule_conditions: rule_conditions, conditions_hash: associations_conditions,
-                                                                 parent_class: @model_class, path: path_start_node) unless associations_conditions.blank?
-
-        [rule_conditions, matches]
-      end
-
-      def append_association_conditions(rule_conditions:, conditions_hash:, parent_class:, path: )
-        asso_conditions_string, matches = construct_association_conditions(conditions: conditions_hash,
-                                                                           parent_class: parent_class, path: path)
-        rule_conditions += ' AND ' if !rule_conditions.blank?
-        rule_conditions += asso_conditions_string
-        [rule_conditions, matches]
-      end
-
-      def construct_association_conditions(conditions:, parent_class:, path:, conditions_string: '', matches: [])
-        conditions_string += ' AND ' unless conditions_string.blank?
-        conditions.each do |association, conditions|
-          relationship = parent_class.associations[association]
-          associations_conditions, model_conditions = bifurcate_conditions(conditions)
-          
-          conditions_string, path, matches = append_model_conditions(relationship: relationship,
-                                                                     model_conditions: model_conditions,
-                                                                     path: path, matches: matches,
-                                                                     conditions_string: conditions_string) 
-          conditions_string, matches = construct_association_conditions(conditions: associations_conditions,
-                                                                        parent_class: relationship.target_class,
-                                                                        conditions_string: conditions_string,
-                                                                        path: path, matches: matches) if !associations_conditions.blank?
-        end
-        [conditions_string, matches]
-      end
-
-      def append_model_conditions(relationship:, model_conditions:, path:, conditions_string:, matches:)
-        direct_model_conditions = model_conditions.select {|key, _| !relationship.target_class.associations_keys.include?(key)}
-        path += append_path(relationship, direct_model_conditions.blank?)
-        if !direct_model_conditions.blank?
-          matches << match_node_cypher(relationship.target_class)
-          conditions_string += ( path + " AND " )
-        end
-        conditions_string += construct_conditions_string(model_conditions, relationship.target_class, path) if !model_conditions.blank?
-        [conditions_string, path, matches]
-      end
-
-      def append_path(relationship, without_end_node)
-        direction_cypher(relationship) +
-        (without_end_node ? '()' : match_node_cypher(relationship.target_class))
       end
 
       def base_query_proxy
         @model_class.as(var_name(@model_class))
       end
 
-      def records_for_rule(rule)
-        return records_for_rule_without_conditions(rule) if rule.conditions.blank?
-
-        records = base_query_proxy
-        where_method = rule.base_behavior ? :where : :where_not
-        associations_conditions, model_conditions = bifurcate_conditions(rule.conditions)
-        unless model_conditions.blank?
-          model_conditions_string = construct_conditions_string(model_conditions, @model_class)
-          records = records.send(where_method, model_conditions_string)
-        end
-
-        associations_conditions.each do |association, conditions|
-          branch_chain = construct_branches(association: association, conditions: conditions,
-                                            base_class: @model_class, where_method: where_method)
-          records = records.branch { eval(branch_chain)}
-        end
-        records
-      end
-      
-      def construct_branches(association:, conditions:, base_class:, where_method:, branch_chain:'')
-        base_class = base_class.associations[association].target_class
-        branch_chain += '.' unless branch_chain.blank?
-        branch_chain += association.to_s
-        associations_conditions, model_conditions = bifurcate_conditions(conditions)
-        unless model_conditions.blank?
-          model_conditions_string = construct_conditions_string(model_conditions, base_class)
-          branch_chain += ".as(:#{var_name(base_class)}).#{where_method}(\"#{model_conditions_string}\")"
-        end
-        associations_conditions.each do |association, conditions|
-          branch_chain = construct_branches(association: association, conditions: conditions,
-                                            base_class: base_class, where_method: where_method, branch_chain: branch_chain)
-        end
-        branch_chain
-      end
-
-      def bifurcate_conditions(conditions)
-        conditions.partition{|_, value| value.is_a?(Hash)}.map(&:to_h)
-      end
-
-      def bifurcate_model_conditions(model_conditions)
-        conditions.partition{|key, _| model_class.associations_keys.include?(key)}.map(&:to_h)
-      end
-
-      def records_for_rule_without_conditions(rule)
-        rule.base_behavior ? @model_class.all : @model_class.where_not('true')
-      end
-
       def override_scope
         conditions = @rules.map(&:conditions).compact
-        return unless conditions.any? { |c| c.is_a?(Neo4j::ActiveNode::Query::QueryProxy) }
+        return unless conditions.any? { |condition| condition.is_a?(Neo4j::ActiveNode::Query::QueryProxy) }
         return conditions.first if conditions.size == 1
         raise_override_scope_error
       end
@@ -176,11 +112,19 @@ module CanCan
               'Unable to merge an ActiveNode scope with other conditions. '\
               "Instead use a hash for #{rule_found.actions.first} #{rule_found.subjects.first} ability."
       end
+
+      def var_name(model_class)
+        CanCanCan::Neo4j::CypherConstructorHelper.var_name(model_class)
+      end
     end
   end
 end
 
-# simplest way to add `accessible_by` to all ActiveNode models
-module Neo4j::ActiveNode::ClassMethods
-  include CanCan::ModelAdditions::ClassMethods
+module Neo4j
+  module ActiveNode
+    # simplest way to add `accessible_by` to all ActiveNode models
+    module ClassMethods
+      include CanCan::ModelAdditions::ClassMethods
+    end
+  end
 end

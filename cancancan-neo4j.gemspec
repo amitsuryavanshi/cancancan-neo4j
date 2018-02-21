@@ -18,16 +18,14 @@ Gem::Specification.new do |spec|
   spec.files         = `git ls-files lib init.rb cancancan-neo4j.gemspec`.split($INPUT_RECORD_SEPARATOR)
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'cancancan', '~> 2.0'
+  spec.add_dependency 'cancancan', '>= 2.0'
+  spec.add_dependency 'neo4j', '>= 9.0.0'
 
-  spec.add_development_dependency 'bundler', '~> 1.3'
-  spec.add_development_dependency 'rake', '~> 10.1'
-  spec.add_development_dependency 'rspec', '~> 3.2'
-  spec.add_development_dependency 'rubocop', '~> 0.48.1'
-  spec.add_development_dependency 'simplecov', '~> 0.12'
-  spec.add_development_dependency 'coveralls', '~> 0.8'
-  spec.add_development_dependency 'codeclimate-test-reporter', '~> 1.0'
-  spec.add_development_dependency 'neo4j', '~> 9.0.0'
-  spec.add_development_dependency 'pry', '~> 0.11.3'
-  spec.add_development_dependency('neo4j-community', '~> 2.0') if RUBY_PLATFORM =~ /java/
+  spec.add_development_dependency 'bundler', '>= 1.3'
+  spec.add_development_dependency 'rake', '>= 10.1'
+  spec.add_development_dependency 'rspec', '>= 3.2'
+  spec.add_development_dependency 'rubocop', '>= 0.48.1'
+  spec.add_development_dependency 'pry', '>= 0.11.3'
+  spec.add_development_dependency 'neo4j-community' if RUBY_PLATFORM =~ /java/
+  spec.add_development_dependency('neo4j-rake_tasks', '>= 0.3.0')
 end
