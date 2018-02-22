@@ -6,7 +6,6 @@ SimpleCov.start
 require 'bundler/setup'
 require 'cancancan/neo4j'
 
-require 'matchers'
 require 'cancan/matchers'
 
 require 'neo4j-server'
