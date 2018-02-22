@@ -1,8 +1,8 @@
 # CanCanCan-Neo4j
 
-[![Code Climate Badge](https://codeclimate.com/github/CanCanCommunity/cancancan.svg)](https://codeclimate.com/github/amitsuryavanshi/cancancan-neo4j)
+[![Code Climate Badge](https://codeclimate.com/github/amitsuryavanshi/cancancan-neo4j.svg)](https://codeclimate.com/github/amitsuryavanshi/cancancan-neo4j)
 
-[![Travis badge](https://travis-ci.org/CanCanCommunity/cancancan.svg?branch=develop)](https://travis-ci.org/amitsuryavanshi/cancancan-neo4j)
+[![Travis badge](https://travis-ci.org/amitsuryavanshi/cancancan-neo4j.svg?branch=master)](https://travis-ci.org/amitsuryavanshi/cancancan-neo4j)
 
 This is the adapter for the [CanCanCan](https://github.com/CanCanCommunity/cancancan) authorisation
 library to automatically generate cypher queries from ability rules. It returns QueryProxy object for resourses.
